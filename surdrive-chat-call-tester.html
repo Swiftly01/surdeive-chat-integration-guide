@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sur Drive · Ride chat &amp; call tester</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1419;
+    --surface: #171e26;
+    --surface2: #1f2831;
+    --line: #2b3643;
+    --text: #e6ebf0;
+    --muted: #8593a3;
+    --ok: #4cc38a;
+    --warn: #f0a93b;
+    --bad: #ef6461;
+    --rider: #4fd1c5;
+    --driver: #f6b93b;
+    --radius: 8px;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans);
+    display: flex; flex-direction: column;
+  }
+
+  /* ───── top bar ───── */
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; font-weight: 650; }
+  header span { color: var(--muted); font-size: 12.5px; }
+
+  .setup {
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+    padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .setup label { color: var(--muted); font-size: 12.5px; margin-right: 6px; }
+  .setup .grp { display: flex; align-items: center; }
+  .setup input { width: 260px; }
+  .setup .ride input { width: 330px; }
+
+  input[type=text], textarea {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--text); padding: 6px 9px; font: 13px var(--sans);
+  }
+  input[type=text].mono { font-family: var(--mono); font-size: 12px; }
+  textarea { resize: none; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--ac, var(--rider)); outline-offset: 1px;
+  }
+
+  details.help { margin-left: auto; font-size: 12.5px; color: var(--muted); position: relative; }
+  details.help summary { cursor: pointer; }
+  details.help .box {
+    position: absolute; right: 0; top: 26px; z-index: 20; width: 460px; max-width: 90vw;
+    background: var(--surface2); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 14px; color: var(--text); box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  }
+  details.help ul { padding-left: 18px; display: grid; gap: 5px; }
+  details.help code { font-family: var(--mono); font-size: 11.5px; color: var(--warn); }
+
+  /* ───── panels ───── */
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
+  .panel {
+    min-height: 0; overflow-y: auto; border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+  }
+  .panel:last-child { border-right: 0; }
+  .p-A { --ac: var(--rider); }
+  .p-B { --ac: var(--driver); }
+
+  .sect { padding: 12px 16px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+  .sect h3 { font-size: 12.5px; font-weight: 650; color: var(--muted); }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .row > input { flex: 1; min-width: 0; }
+
+  .who { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ac); flex: none; }
+  .who h2 { font-size: 14px; font-weight: 650; flex: 1; }
+  .pill {
+    font-size: 11px; padding: 1px 8px; border-radius: 20px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--surface);
+  }
+  .pill.on { color: var(--ok); border-color: #285a43; background: #14261d; }
+  .pill.wait { color: var(--warn); border-color: #5c4519; background: #271f10; }
+  .tokeninfo { font-size: 12px; color: var(--muted); min-height: 17px; }
+  .tokeninfo b { color: var(--text); font-weight: 600; }
+  .tokeninfo .warnt { color: var(--warn); }
+
+  button {
+    padding: 6px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface2);
+    color: var(--text); font: 500 12.5px var(--sans); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button.main-act { background: var(--ac); border-color: var(--ac); color: #0b1013; font-weight: 650; }
+  button.good { background: #1c4a36; border-color: #2c7a58; color: #bff0d8; }
+  button.danger { background: #3c1f1f; border-color: #6b3030; color: #ffb8b6; }
+
+  /* ───── policy banner ───── */
+  .banner {
+    display: none; margin: 10px 16px 0; padding: 10px 12px; border-radius: var(--radius);
+    background: #2a1414; border: 1px solid #693333; gap: 6px; flex-direction: column;
+  }
+  .banner.show { display: flex; }
+  .banner .top { display: flex; gap: 8px; align-items: flex-start; }
+  .banner .msg { flex: 1; font-size: 13px; }
+  .banner .hint { font-size: 12px; color: var(--muted); }
+  .banner .x { border: 0; background: none; color: var(--muted); padding: 0 4px; font-size: 14px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font: 600 11px var(--mono); padding: 2px 8px; border-radius: 20px;
+    background: #1c1010; color: var(--bad); border: 1px solid #5a2a2a;
+  }
+  .chip.muted { background: var(--surface2); color: var(--muted); border-color: var(--line); font-weight: 500; }
+  .chip.okc { background: #14261d; color: var(--ok); border-color: #285a43; font-family: var(--sans); }
+  .chip.badc { background: #271414; color: var(--bad); border-color: #5a2a2a; font-family: var(--sans); }
+
+  /* ───── thread ───── */
+  .thread {
+    height: 260px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .bubble { max-width: 82%; padding: 6px 10px; border-radius: 12px; font-size: 13px; word-break: break-word; }
+  .bubble small { display: block; font-size: 10.5px; opacity: .65; margin-top: 2px; }
+  .bubble.mine { align-self: flex-end; background: color-mix(in srgb, var(--ac) 22%, var(--surface)); border-bottom-right-radius: 3px; }
+  .bubble.theirs { align-self: flex-start; background: var(--surface2); border-bottom-left-radius: 3px; }
+  .bubble.system { align-self: center; background: transparent; color: var(--muted); font-size: 12px; border: 1px dashed var(--line); }
+  .typing { height: 16px; font-size: 12px; color: var(--warn); font-style: italic; }
+  .composer { display: flex; gap: 6px; }
+  .composer textarea { flex: 1; height: 52px; }
+  .composer .btns { display: grid; gap: 6px; }
+
+  /* ───── attachments + voice notes ───── */
+  .bubble .att-img { display: block; max-width: 100%; max-height: 150px; border-radius: 8px; cursor: zoom-in; background: var(--surface); }
+  .bubble audio { display: block; width: 230px; max-width: 100%; height: 34px; }
+  .bubble a.att-file { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+  .bubble .cap { margin-top: 4px; }
+  .bubble .meta { font: 10.5px var(--mono); opacity: .65; margin-top: 3px; }
+  .staged {
+    display: none; align-items: center; gap: 8px; padding: 6px 8px;
+    border: 1px dashed var(--line); border-radius: 6px; background: var(--surface);
+  }
+  .staged.show { display: flex; }
+  .staged .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .staged img { height: 34px; border-radius: 4px; }
+  .staged audio { height: 30px; width: 190px; max-width: 45%; }
+  button.rec.on { background: #3c1f1f; border-color: #6b3030; color: #ffb8b6; }
+  button.rec.on::before { content: "● "; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { button.rec.on::before { animation: none; } }
+  .row .lbl { font-size: 11.5px; color: var(--muted); }
+
+  /* ───── call ───── */
+  .callbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .badge { font-size: 11.5px; font-weight: 600; padding: 2px 10px; border-radius: 20px; background: var(--surface2); color: var(--muted); }
+  .badge.ringing, .badge.calling, .badge.connecting { background: #2c2410; color: var(--warn); }
+  .badge.active { background: #14281e; color: var(--ok); }
+  .badge.failed, .badge.missed, .badge.declined, .badge.cancelled { background: #2a1414; color: var(--bad); }
+  .timer { font: 600 15px var(--mono); }
+  .cid { font: 11px var(--mono); color: var(--muted); }
+  .meter { flex: 1; min-width: 90px; max-width: 200px; height: 6px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .08s; }
+  .incoming {
+    display: none; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius);
+    background: #16291f; border: 1px solid #2c7a58;
+  }
+  .incoming.show { display: flex; animation: ring 1s ease-in-out infinite; }
+  .incoming .who2 { flex: 1; font-size: 13px; }
+  @keyframes ring { 50% { border-color: var(--ok); } }
+  @media (prefers-reduced-motion: reduce) { .incoming.show { animation: none; } }
+  label.chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+
+  /* ───── video call ───── */
+  .ctype { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: var(--surface2); color: var(--muted); }
+  .vids { display: none; position: relative; background: #000; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; aspect-ratio: 4 / 3; max-height: 270px; justify-self: center; width: 100%; }
+  .vids.show { display: block; }
+  .vids video.remote { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .vids video.local { position: absolute; right: 8px; bottom: 8px; width: 28%; max-width: 120px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; border: 1px solid rgba(255,255,255,.4); background: #111; }
+  .vids .ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: #9aa4b2; pointer-events: none; }
+  .vids .ph.hide { display: none; }
+
+  /* ───── log ───── */
+  .log { height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .entry {
+    display: flex; gap: 8px; padding: 5px 9px; background: var(--surface); border: 1px solid var(--line);
+    border-left-width: 3px; border-radius: 6px;
+  }
+  .entry.sent { border-left-color: var(--ac); }
+  .entry.recv { border-left-color: var(--ok); }
+  .entry.error, .entry.policy { border-left-color: var(--bad); background: #1d1213; }
+  .entry.system { border-left-color: var(--muted); }
+  .entry.rtc { border-left-color: #8e7cf0; }
+  .entry.rest { border-left-color: #5aa9f0; }
+  .entry.typing { border-left-color: var(--warn); }
+  .tag { font: 700 10px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--muted); height: fit-content; margin-top: 1px; }
+  .ec { flex: 1; min-width: 0; }
+  .en { font-size: 12px; font-weight: 600; }
+  .ed { font: 11px/1.45 var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+  .et { font-size: 10.5px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 0; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; }
+
+  @media (max-width: 980px) {
+    body { height: auto; }
+    main { grid-template-columns: 1fr; }
+    .panel { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+    .setup input, .setup .ride input { width: 100%; }
+    .setup .grp { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sur Drive · Ride chat and call tester</h1>
+  <span>Two users, one ride. Chat over <code>/chat</code>, voice over <code>/call</code>.</span>
+</header>
+
+<div class="setup">
+  <div class="grp"><label for="serverUrl">Server</label><input type="text" id="serverUrl" class="mono" value="http://localhost:3000" /></div>
+  <div class="grp ride"><label for="rideId">Ride ID</label><input type="text" id="rideId" class="mono" placeholder="Ride that has a driver assigned" /></div>
+  <details class="help">
+    <summary>What to try</summary>
+    <div class="box">
+      <ul>
+        <li>Paste the <b>rider's</b> access token in the left panel and the <b>driver's</b> in the right, then connect both.</li>
+        <li><b>Open chat</b> on a ride still searching → <code>RIDE_CHAT_NOT_MATCHED</code>.</li>
+        <li>Assign a driver, open chat, send messages both ways. Each message should arrive once.</li>
+        <li>Call from either side. Answer on the other, and watch the audio meter move.</li>
+        <li>Press <b>Video call</b>: the other side sees “is video calling”, with <b>Answer</b> (camera + mic) or <b>Answer without camera</b>. No camera? Tick <b>test video pattern</b> and each side sends a moving pattern with a live clock, so you can see frames arriving.</li>
+        <li>During a video call try <b>Camera off</b>. The other side just gets a black frame (the server has no event for it). A voice call never shows the video area.</li>
+        <li>Complete the ride: chat stays open for the post-ride window, calls give <code>RIDE_CALL_NOT_ACTIVE</code>.</li>
+        <li>Cancel the ride: chat gives <code>RIDE_CHAT_RIDE_CANCELLED</code>. History still loads.</li>
+        <li>Use a third user's token on this ride → 404 / <code>RIDE_CHAT_NOT_PARTICIPANT</code>.</li>
+        <li><b>Attach file</b> sends a photo or document, and <b>Record voice note</b> sends audio. The message box becomes the caption. The page does not pre-check files, so the server's rules are what you see.</li>
+        <li>Use the <b>Negative tests</b> buttons: a fake image → <code>ATTACHMENT_CONTENT_MISMATCH</code>, an SVG → <code>ATTACHMENT_TYPE_NOT_ALLOWED</code>, 11 MB → <code>ATTACHMENT_TOO_LARGE</code>.</li>
+        <li>Close the driver's tab, send a message: the server should send a push (check server logs).</li>
+        <li>REST calls need CORS. Opening this file directly sends origin <code>null</code>; if requests fail, add it to <code>CORS_ALLOWED_ORIGINS</code> or serve the page over http.</li>
+      </ul>
+    </div>
+  </details>
+</div>
+
+<main id="panels"></main>
+
+<script>
+/* ═════════════════════════════════ helpers ═════════════════════════════════ */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const nowStr = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
+const fmtTime = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); };
+
+const ROLES = { A: 'Rider', B: 'Driver' };
+const mk = () => ({
+  chat: null, call: null, me: null, conv: null, seen: new Set(),
+  pc: null, stream: null, stopTone: null, phase: 'idle', callId: null, ice: null,
+  isCaller: false, answering: false, iceIn: [], iceOut: [], peerJoinedPending: false,
+  startedAt: null, timer: null, typingStop: null, typing: false, typingHide: null,
+  meterRaf: 0, meterCtx: null, lastErr: { key: '', t: 0 },
+  staged: null, rec: null, recTimer: null, callType: 'voice',
+});
+const U = { A: mk(), B: mk() };
+
+/* Hints shown under the server's own message — these are the stable `code`s */
+const HINTS = {
+  RIDE_CHAT_NOT_MATCHED: 'No driver has accepted this ride yet.',
+  RIDE_CHAT_RIDE_CANCELLED: 'The ride was cancelled. History is still readable.',
+  RIDE_CHAT_WINDOW_EXPIRED: 'The post-ride chat window has closed.',
+  RIDE_CALL_NOT_ACTIVE: 'Calls only work while the ride is active.',
+  RIDE_CHAT_NOT_PARTICIPANT: 'This user is not the rider or driver of this ride / conversation.',
+  CALL_BUSY: 'Rider or driver is already in a call.',
+  VIDEO_CALLS_DISABLED: 'The server has VIDEO_CALLS_ENABLED=false. Voice calls still work.',
+  NO_CAMERA: 'Allow camera access, or tick “test video pattern” to test without a camera.',
+  CALL_ANSWERED_ELSEWHERE: 'Another device of this user already picked up.',
+  CALL_NOT_ACTIVE: 'The call already ended.',
+  RATE_LIMITED: 'Too many requests from this socket in the last minute.',
+  NOT_CONNECTED: 'Connect the socket first.',
+  ATTACHMENT_REQUIRED: 'The request had no file in the “file” field.',
+  ATTACHMENT_EMPTY: 'The file has no bytes.',
+  ATTACHMENT_TOO_LARGE: 'Limit is 10 MB per file.',
+  ATTACHMENT_TYPE_NOT_ALLOWED: 'Allowed: photos (jpg, png, webp, gif, heic), voice notes (m4a, aac, mp3, ogg, webm, wav, amr, 3gp), pdf / Office / txt / csv.',
+  ATTACHMENT_CONTENT_MISMATCH: 'The file’s real bytes (or its extension) do not match the type it claims to be.',
+  ATTACHMENT_TOO_LONG: 'Voice notes can be at most 5 minutes.',
+};
+
+/* ═════════════════════════════ panel markup ═════════════════════════════ */
+function panelHTML(u) {
+  return `
+  <section class="panel p-${u}" id="panel${u}">
+    <div class="sect">
+      <div class="who">
+        <span class="dot"></span><h2 id="title${u}">${ROLES[u]} <span class="pill">user ${u}</span></h2>
+        <span class="pill" id="chatPill${u}">chat off</span>
+        <span class="pill" id="callPill${u}">call off</span>
+      </div>
+      <div class="row">
+        <input type="text" class="mono" id="token${u}" placeholder="Paste access token (with or without “Bearer ”)" />
+      </div>
+      <div class="tokeninfo" id="tokenInfo${u}"></div>
+      <div class="row">
+        <button class="main-act" onclick="connectUser('${u}')">Connect</button>
+        <button class="danger" id="disc${u}" onclick="disconnectUser('${u}')" disabled>Disconnect</button>
+      </div>
+    </div>
+
+    <div class="banner" id="banner${u}">
+      <div class="top"><span class="msg" id="bmsg${u}"></span><button class="x" onclick="hideBanner('${u}')" aria-label="Dismiss">✕</button></div>
+      <div class="chips" id="bchips${u}"></div>
+      <div class="hint" id="bhint${u}"></div>
+    </div>
+
+    <div class="sect">
+      <h3>Chat</h3>
+      <div class="row">
+        <button class="main-act" onclick="openChat('${u}')">Open chat for ride</button>
+        <button onclick="loadHistory('${u}')">History</button>
+        <button onclick="loadUnread('${u}')">Unread</button>
+        <button onclick="loadCallHistory('${u}')">Call history</button>
+      </div>
+      <div class="chips" id="state${u}"><span class="chip muted">Open the chat to see what this user may do</span></div>
+      <div class="row">
+        <input type="text" class="mono" id="conv${u}" placeholder="Conversation ID (filled by “Open chat”, or paste one)" />
+      </div>
+      <div class="thread" id="thread${u}"></div>
+      <div class="typing" id="typing${u}"></div>
+      <div class="composer">
+        <textarea id="msg${u}" placeholder="Type a message. Enter sends, Shift+Enter adds a line." maxlength="1100"></textarea>
+        <div class="btns">
+          <button class="main-act" onclick="sendSocket('${u}')">Send</button>
+          <button onclick="sendRest('${u}')" title="POST /chat/conversations/:id/messages">Send via REST</button>
+        </div>
+      </div>
+      <div class="staged" id="staged${u}"></div>
+      <div class="row">
+        <input type="file" id="file${u}" hidden />
+        <button onclick="$('file${u}').click()">📎 Attach file</button>
+        <button class="rec" id="recBtn${u}" onclick="toggleRecord('${u}')">🎤 Record voice note</button>
+        <span class="timer" id="recTimer${u}" hidden>00:00</span>
+        <button class="main-act" id="sendAtt${u}" onclick="sendAttachment('${u}')" disabled title="POST /chat/conversations/:id/attachments. The message box is used as the caption.">Send attachment</button>
+      </div>
+      <div class="row">
+        <span class="lbl">Negative tests</span>
+        <button onclick="stageFake('${u}','image')" title="Executable bytes named photo.png">Fake image</button>
+        <button onclick="stageFake('${u}','svg')">SVG</button>
+        <button onclick="stageFake('${u}','big')">11 MB file</button>
+        <button onclick="markRead('${u}')" style="margin-left:auto">Mark read</button>
+      </div>
+    </div>
+
+    <div class="sect">
+      <h3>Voice &amp; video call</h3>
+      <div class="callbar">
+        <span class="badge" id="badge${u}">Idle</span>
+        <span class="ctype" id="ctype${u}" hidden></span>
+        <span class="timer" id="timer${u}" hidden>00:00</span>
+        <span class="cid" id="cid${u}"></span>
+        <div class="meter" title="Level of audio received from the other side"><i id="meter${u}"></i></div>
+      </div>
+      <div class="incoming" id="incoming${u}">
+        <div class="who2"><b id="callerName${u}">Someone</b> <span id="callKind${u}">is calling</span></div>
+        <button class="good" id="answer${u}" onclick="answerCall('${u}')">Answer</button>
+        <button id="answerAudio${u}" onclick="answerCall('${u}', true)" hidden title="Join a video call with the microphone only">Answer without camera</button>
+        <button class="danger" id="decline${u}" onclick="declineCall('${u}')">Decline</button>
+      </div>
+      <div class="row">
+        <button class="main-act" id="btnCall${u}" onclick="startCall('${u}', 'voice')">Voice call</button>
+        <button class="main-act" id="btnVideo${u}" onclick="startCall('${u}', 'video')">📹 Video call</button>
+        <button id="btnCancel${u}" onclick="cancelCall('${u}')" disabled>Cancel</button>
+        <button class="danger" id="btnEnd${u}" onclick="endCall('${u}')" disabled>End call</button>
+        <button id="btnMute${u}" onclick="toggleMute('${u}')" disabled>Mute mic</button>
+        <button id="btnCam${u}" onclick="toggleCam('${u}')" disabled>Camera off</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="tone${u}" /> Send a test tone instead of the microphone (no mic needed, and no feedback when both users are in this tab)</label>
+      <label class="chk"><input type="checkbox" id="testvid${u}" /> Send a test video pattern instead of the camera (no camera needed)</label>
+      <div class="vids" id="vids${u}">
+        <video class="remote" id="remoteVid${u}" autoplay playsinline muted></video>
+        <video class="local" id="localVid${u}" autoplay playsinline muted></video>
+        <div class="ph" id="vph${u}">Waiting for the other side's video…</div>
+      </div>
+      <audio id="remote${u}" autoplay playsinline></audio>
+    </div>
+
+    <div class="sect">
+      <div class="row"><h3 style="flex:1">Event log</h3><button onclick="clearLog('${u}')">Clear</button></div>
+      <div class="log" id="log${u}"><div class="empty">Connect to start capturing events</div></div>
+    </div>
+  </section>`;
+}
+$('panels').innerHTML = panelHTML('A') + panelHTML('B');
+
+/* ═════════════════════════════════ log ═════════════════════════════════ */
+const TAGS = { sent: 'SEND', recv: 'RECV', error: 'ERR', system: 'SYS', rtc: 'RTC', rest: 'REST', policy: 'POLICY', typing: 'TYPE' };
+
+/* SDP blobs are huge and useless on screen — show their length instead */
+function slim(d) {
+  if (!d || typeof d !== 'object') return d;
+  const c = Array.isArray(d) ? d.map(slim) : { ...d };
+  if (!Array.isArray(c)) {
+    if (typeof c.sdp === 'string') c.sdp = `(sdp, ${c.sdp.length} chars)`;
+    if (typeof c.candidate === 'string' && c.candidate.length > 60) c.candidate = c.candidate.slice(0, 60) + '…';
+    if (c.iceServers) c.iceServers = c.iceServers.map((s) => ({ urls: s.urls, ...(s.username ? { username: '(set)' } : {}) }));
+  }
+  return c;
+}
+
+function addLog(u, type, name, data) {
+  const log = $('log' + u);
+  log.querySelector('.empty')?.remove();
+  const s = data === undefined || data === null ? '' : typeof data === 'object' ? JSON.stringify(slim(data), null, 2) : String(data);
+  const el = document.createElement('div');
+  el.className = 'entry ' + type;
+  el.innerHTML = `<span class="tag">${TAGS[type] || type}</span><div class="ec"><div class="en">${esc(name)}</div>${s ? `<div class="ed">${esc(s)}</div>` : ''}</div><span class="et">${nowStr()}</span>`;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+function clearLog(u) { $('log' + u).innerHTML = '<div class="empty">Log cleared</div>'; }
+
+/* ═══════════════════════════ policy / error banner ═══════════════════════════ */
+/* Errors arrive as: ack {success:false,error:{…}}, flat 'exception' event, or REST body {statusCode,code,message}. */
+function extractError(p) {
+  if (!p || typeof p !== 'object') return null;
+  if (p.success === false && p.error) return p.error;
+  if (p.code && p.message && (p.statusCode >= 400 || p.statusCode === undefined)) return p;
+  return null;
+}
+function rel(iso) {
+  const ms = new Date(iso).getTime() - Date.now(); if (isNaN(ms)) return '';
+  const m = Math.round(Math.abs(ms) / 60000);
+  const t = m < 60 ? `${m} min` : `${Math.round(m / 60)} h`;
+  return ms < 0 ? `${t} ago` : `in ${t}`;
+}
+function showBanner(u, err) {
+  const st = U[u], key = (err.code || '') + '|' + (err.message || '');
+  if (st.lastErr.key === key && Date.now() - st.lastErr.t < 400) return; // server sends ack + 'exception'
+  st.lastErr = { key, t: Date.now() };
+
+  $('bmsg' + u).textContent = err.message || 'Request refused.';
+  const chips = [`<span class="chip">${esc(err.code || 'ERROR')}</span>`];
+  if (err.statusCode) chips.push(`<span class="chip muted">HTTP ${err.statusCode}</span>`);
+  if (err.expiresAt) chips.push(`<span class="chip muted">${esc(new Date(err.expiresAt).toLocaleString('en-GB'))} (${esc(rel(err.expiresAt))})</span>`);
+  $('bchips' + u).innerHTML = chips.join('');
+  $('bhint' + u).textContent = HINTS[err.code] || '';
+  $('banner' + u).classList.add('show');
+  addLog(u, 'policy', err.code || 'ERROR', err);
+}
+function hideBanner(u) { $('banner' + u).classList.remove('show'); }
+
+/* ═════════════════════════════ token + connection ═════════════════════════════ */
+const readToken = (u) => $('token' + u).value.trim().replace(/^Bearer\s+/i, '');
+function decodeJwt(t) {
+  try { return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return null; }
+}
+function describeToken(u) {
+  const t = readToken(u), el = $('tokenInfo' + u);
+  if (!t) { el.textContent = ''; return null; }
+  const p = decodeJwt(t);
+  if (!p) { el.innerHTML = '<span class="warnt">This does not look like a JWT.</span>'; return null; }
+  const bits = [`<b>${esc(p.role || 'no role')}</b>`, `id ${esc(p.sub || '?')}`];
+  if (p.exp) bits.push(p.exp * 1000 < Date.now() ? '<span class="warnt">expired</span>' : `expires ${esc(rel(p.exp * 1000))}`);
+  if (p.purpose) bits.push(`<span class="warnt">“${esc(p.purpose)}” token, not a login token (will be rejected)</span>`);
+  el.innerHTML = bits.join(' · ');
+  return p;
+}
+
+function setPill(id, state, text) { const e = $(id); e.textContent = text; e.className = 'pill ' + (state || ''); }
+function refreshConnUI(u) {
+  const st = U[u], c = st.chat?.connected, k = st.call?.connected;
+  setPill('chatPill' + u, c ? 'on' : st.chat ? 'wait' : '', c ? 'chat on' : st.chat ? 'chat connecting' : 'chat off');
+  setPill('callPill' + u, k ? 'on' : st.call ? 'wait' : '', k ? 'call on' : st.call ? 'call connecting' : 'call off');
+  $('disc' + u).disabled = !(c || k);
+}
+
+function connectUser(u) {
+  const token = readToken(u);
+  if (!token) { showBanner(u, { code: 'NO_TOKEN', message: `Paste an access token for the ${ROLES[u].toLowerCase()} first.` }); return; }
+  disconnectUser(u, true);
+  hideBanner(u);
+  U[u].me = describeToken(u);
+  const url = $('serverUrl').value.trim().replace(/\/$/, '');
+  saveSettings();
+
+  for (const which of ['chat', 'call']) {
+    addLog(u, 'system', `Connecting to /${which}…`, { url: `${url}/${which}` });
+    const s = io(`${url}/${which}`, { auth: { token }, transports: ['websocket', 'polling'], reconnection: false });
+    U[u][which] = s;
+    bindCommon(u, which, s);
+    which === 'chat' ? bindChat(u, s) : bindCall(u, s);
+  }
+  refreshConnUI(u);
+}
+
+function disconnectUser(u, silent) {
+  const st = U[u];
+  if (st.rec) { st.rec.discard = true; st.rec.recorder.stop(); }
+  if (st.phase !== 'idle') cleanupCall(u, 'idle', true);
+  for (const which of ['chat', 'call']) { st[which]?.removeAllListeners(); st[which]?.disconnect(); st[which] = null; }
+  refreshConnUI(u);
+  if (!silent) addLog(u, 'system', 'Disconnected');
+}
+
+/* Events every namespace shares + a catch-all so nothing the server emits goes unseen */
+const KNOWN_QUIET = new Set(['exception', 'user_typing', 'user_stopped_typing']);
+function bindCommon(u, which, s) {
+  s.on('connect', () => { addLog(u, 'system', `/${which} connected`, { socketId: s.id }); refreshConnUI(u); });
+  s.on('disconnect', (reason) => {
+    addLog(u, 'system', `/${which} disconnected`, { reason });
+    if (U[u][which] === s) U[u][which] = null;
+    if (which === 'call' && U[u].phase !== 'idle') cleanupCall(u, 'failed', true);
+    refreshConnUI(u);
+  });
+  s.on('connect_error', (e) => {
+    addLog(u, 'error', `/${which} connection error`, { message: e.message, hint: e.message === 'Unauthorized' ? 'Token is missing, expired, not an access token, or not a rider/driver.' : 'Is the server running at that URL?' });
+    if (U[u][which] === s) U[u][which] = null;
+    refreshConnUI(u);
+  });
+  s.on('exception', (p) => { const err = extractError(p); err ? showBanner(u, err) : addLog(u, 'error', 'exception', p); });
+  s.onAny((ev, ...args) => { if (!KNOWN_QUIET.has(ev)) addLog(u, 'recv', `${which} · ${ev}`, args[0]); });
+}
+
+/* Emit with ack; resolves with the ack (or null). Errors go to the banner. */
+function emitAck(u, which, event, data) {
+  const s = U[u][which];
+  if (!s || !s.connected) { showBanner(u, { code: 'NOT_CONNECTED', message: `The /${which} socket is not connected for this user.` }); return Promise.resolve(null); }
+  addLog(u, 'sent', `${which} · ${event}`, data);
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { addLog(u, 'error', `No ack for ${event} after 6s`); resolve(null); }, 6000);
+    s.emit(event, data, (ack) => {
+      clearTimeout(t);
+      const err = extractError(ack);
+      if (err) showBanner(u, err); else addLog(u, 'recv', `ack · ${event}`, ack);
+      resolve(ack);
+    });
+  });
+}
+
+/* ═════════════════════════════════ REST ═════════════════════════════════ */
+async function api(u, method, path, body) {
+  const url = $('serverUrl').value.trim().replace(/\/$/, '') + path;
+  addLog(u, 'rest', `${method} ${path}`, body);
+  try {
+    const r = await fetch(url, {
+      method, headers: { Authorization: 'Bearer ' + readToken(u), 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let json = null; try { json = await r.json(); } catch {}
+    addLog(u, 'rest', `→ ${r.status}`, r.ok ? (Array.isArray(json) ? { count: json.length, items: json } : json) : undefined);
+    if (!r.ok) showBanner(u, json && json.code ? { statusCode: r.status, ...json } : { statusCode: r.status, code: 'HTTP_' + r.status, message: json?.message || r.statusText || 'Request failed' });
+    return { ok: r.ok, status: r.status, json };
+  } catch (e) {
+    addLog(u, 'error', 'Request failed', { message: e.message });
+    showBanner(u, { code: 'NETWORK', message: 'Could not reach the server. If the server is up, this is usually CORS: add this page\'s origin (“null” for file://) to CORS_ALLOWED_ORIGINS.' });
+    return { ok: false };
+  }
+}
+const rideIdOf = (u) => { const r = $('rideId').value.trim(); if (!r) showBanner(u, { code: 'NO_RIDE', message: 'Enter a Ride ID at the top first.' }); return r; };
+const convOf = (u) => { const c = $('conv' + u).value.trim(); if (!c) showBanner(u, { code: 'NO_CONVERSATION', message: 'Open the chat first, or paste a conversation ID.' }); return c; };
+
+/* ═════════════════════════════════ chat ═════════════════════════════════ */
+function bindChat(u, s) {
+  s.on('new_message', (m) => addBubble(u, m));
+  s.on('user_typing', () => {
+    const el = $('typing' + u); el.textContent = 'The other person is typing…';
+    clearTimeout(U[u].typingHide); U[u].typingHide = setTimeout(() => (el.textContent = ''), 3000);
+  });
+  s.on('user_stopped_typing', () => { $('typing' + u).textContent = ''; });
+  s.on('chat_closed', (d) => {
+    const c = U[u].conv; if (c) { c.messaging = { canSend: false, code: d.code, message: d.message, expiresAt: null }; c.calling = { canCall: false, code: d.code, message: d.message }; renderState(u); }
+    showBanner(u, { code: d.code, message: d.message });
+  });
+  s.on('chat_window_updated', (d) => {
+    const c = U[u].conv; if (c) { c.messaging = { canSend: d.canSend, expiresAt: d.expiresAt, code: null, message: null }; c.calling = { canCall: false, code: 'RIDE_CALL_NOT_ACTIVE', message: 'Calls are only available while the ride is active.' }; renderState(u); }
+  });
+}
+
+const escA = (s) => esc(s).replace(/"/g, '&quot;');
+const fmtSize = (n) => (n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB');
+const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+/* text, image, audio and file messages all come through here */
+function bubbleBody(m) {
+  const a = m.attachment;
+  if (!a || !['image', 'audio', 'file'].includes(m.type)) return esc(m.content);
+  const cap = m.content ? `<div class="cap">${esc(m.content)}</div>` : '';
+  if (m.type === 'image') {
+    const dim = a.width && a.height ? `${a.width}×${a.height} · ` : '';
+    return `<a href="${escA(a.url)}" target="_blank" rel="noopener"><img class="att-img" src="${escA(a.thumbnailUrl || a.url)}" alt="${escA(a.originalName)}" loading="lazy" /></a>${cap}<div class="meta">${dim}${fmtSize(a.size)}</div>`;
+  }
+  if (m.type === 'audio') {
+    const dur = a.durationSeconds ? mmss(a.durationSeconds) + ' · ' : '';
+    return `<audio controls preload="none" src="${escA(a.url)}"></audio>${cap}<div class="meta">🎤 ${dur}${fmtSize(a.size)}</div>`;
+  }
+  return `<a class="att-file" href="${escA(a.url)}" target="_blank" rel="noopener">📎 ${esc(a.originalName)}</a>${cap}<div class="meta">${fmtSize(a.size)}</div>`;
+}
+
+function addBubble(u, m) {
+  const st = U[u]; if (st.seen.has(m.id)) return; st.seen.add(m.id);
+  const el = document.createElement('div');
+  const mine = st.me && m.senderId === st.me.sub;
+  el.className = 'bubble ' + (m.type === 'system' ? 'system' : mine ? 'mine' : 'theirs');
+  el.innerHTML = `${bubbleBody(m)}<small>${fmtTime(m.createdAt)}</small>`;
+  const th = $('thread' + u); th.appendChild(el); th.scrollTop = th.scrollHeight;
+}
+
+function renderState(u) {
+  const c = U[u].conv, el = $('state' + u);
+  if (!c) { el.innerHTML = '<span class="chip muted">Open the chat to see what this user may do</span>'; return; }
+  const out = [];
+  if (c.counterpart) out.push(`<span class="chip muted">with ${esc(c.counterpart.name)} (${esc(c.counterpart.role)})</span>`);
+  out.push(c.messaging.canSend ? '<span class="chip okc">Chat open</span>' : `<span class="chip badc">Chat closed${c.messaging.code ? ' · ' + esc(c.messaging.code) : ''}</span>`);
+  out.push(c.calling.canCall ? '<span class="chip okc">Calls open</span>' : `<span class="chip badc">Calls closed${c.calling.code ? ' · ' + esc(c.calling.code) : ''}</span>`);
+  if (c.messaging.canSend && c.messaging.expiresAt) out.push(`<span class="chip muted" id="cd${u}"></span>`);
+  if (c.unreadCount) out.push(`<span class="chip muted">${c.unreadCount} unread</span>`);
+  el.innerHTML = out.join('');
+  tickCountdown();
+}
+function tickCountdown() {
+  for (const u of ['A', 'B']) {
+    const c = U[u].conv, el = $('cd' + u); if (!c || !el || !c.messaging.expiresAt) continue;
+    const left = Math.max(0, Math.round((new Date(c.messaging.expiresAt) - Date.now()) / 1000));
+    el.textContent = left ? `chat closes in ${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}` : 'window ended (server now refuses sends)';
+  }
+}
+setInterval(tickCountdown, 1000);
+
+async function openChat(u) {
+  const ride = rideIdOf(u); if (!ride) return;
+  hideBanner(u);
+  const r = await api(u, 'GET', `/chat/rides/${encodeURIComponent(ride)}`);
+  if (!r.ok) { U[u].conv = null; renderState(u); return; }
+  U[u].conv = r.json; $('conv' + u).value = r.json.id; renderState(u);
+}
+
+async function loadHistory(u) {
+  const id = convOf(u); if (!id) return;
+  const r = await api(u, 'GET', `/chat/conversations/${encodeURIComponent(id)}/messages?limit=100`);
+  if (!r.ok) return;
+  const st = U[u]; st.seen.clear(); $('thread' + u).innerHTML = '';
+  [...r.json.items].reverse().forEach((m) => addBubble(u, m));
+}
+async function loadUnread(u) { await api(u, 'GET', '/chat/unread'); }
+async function loadCallHistory(u) { await api(u, 'GET', '/calls?limit=10'); }
+
+async function sendSocket(u) {
+  const id = convOf(u); if (!id) return;
+  const ta = $('msg' + u), content = ta.value.trim();
+  if (!content) { showBanner(u, { code: 'EMPTY', message: 'Type a message first.' }); return; }
+  hideBanner(u);
+  const ack = await emitAck(u, 'chat', 'send_message', { conversationId: id, content });
+  if (ack && ack.success) { addBubble(u, ack.message); ta.value = ''; stopTyping(u); }
+}
+async function sendRest(u) {
+  const id = convOf(u); if (!id) return;
+  const ta = $('msg' + u), content = ta.value.trim();
+  if (!content) { showBanner(u, { code: 'EMPTY', message: 'Type a message first.' }); return; }
+  hideBanner(u);
+  const r = await api(u, 'POST', `/chat/conversations/${encodeURIComponent(id)}/messages`, { content });
+  if (r.ok) { addBubble(u, r.json); ta.value = ''; }
+}
+async function markRead(u) {
+  const id = convOf(u); if (!id) return;
+  await emitAck(u, 'chat', 'message_read', { conversationId: id });
+}
+
+/* typing indicators — one start, one stop after 2s of silence or on blur/send */
+function onType(u) {
+  const st = U[u], id = $('conv' + u).value.trim();
+  if (!id || !st.chat?.connected) return;
+  if (!st.typing) { st.typing = true; st.chat.emit('typing_start', { conversationId: id }); addLog(u, 'typing', 'typing_start'); }
+  clearTimeout(st.typingStop); st.typingStop = setTimeout(() => stopTyping(u), 2000);
+}
+function stopTyping(u) {
+  const st = U[u]; clearTimeout(st.typingStop);
+  if (!st.typing) return; st.typing = false;
+  const id = $('conv' + u).value.trim();
+  if (id && st.chat?.connected) { st.chat.emit('typing_stop', { conversationId: id }); addLog(u, 'typing', 'typing_stop'); }
+}
+for (const u of ['A', 'B']) {
+  const ta = $('msg' + u);
+  ta.addEventListener('input', () => onType(u));
+  ta.addEventListener('blur', () => stopTyping(u));
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSocket(u); } });
+  $('token' + u).addEventListener('input', () => describeToken(u));
+}
+
+/* ═════════════════════════ attachments + voice notes ═════════════════════════ */
+/* One file is "staged" at a time (picked, recorded, or a negative-test file). Sending
+   it posts multipart to the REST endpoint; the server then fans it out as `new_message`. */
+function renderStaged(u) {
+  const el = $('staged' + u), s = U[u].staged, btn = $('sendAtt' + u);
+  if (!s) { el.className = 'staged'; el.innerHTML = ''; btn.disabled = true; return; }
+  const f = s.file, t = f.type || '';
+  const preview = t.startsWith('image/') ? `<img src="${s.url}" alt="" onerror="this.remove()" />` : t.startsWith('audio/') ? `<audio controls src="${s.url}"></audio>` : '<span>📎</span>';
+  el.className = 'staged show';
+  el.innerHTML = `${preview}<span class="nm" title="${escA(f.name)}">${esc(f.name)} · ${fmtSize(f.size)} · ${esc(t || 'no type')}</span><button onclick="clearStaged('${u}')" aria-label="Remove file">✕</button>`;
+  btn.disabled = false;
+}
+function stage(u, file) {
+  clearStaged(u);
+  U[u].staged = { file, url: URL.createObjectURL(file) };
+  renderStaged(u);
+}
+function clearStaged(u) {
+  const st = U[u];
+  if (st.staged) URL.revokeObjectURL(st.staged.url);
+  st.staged = null; $('file' + u).value = ''; renderStaged(u);
+}
+
+/* Negative tests: the server must refuse each of these with a specific code */
+function stageFake(u, kind) {
+  if (kind === 'image') {
+    const bytes = new Uint8Array(256).fill(1); bytes[0] = 0x4d; bytes[1] = 0x5a; // "MZ" = Windows executable
+    stage(u, new File([bytes], 'photo.png', { type: 'image/png' }));
+  } else if (kind === 'svg') {
+    stage(u, new File(['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)<\/script></svg>'], 'logo.svg', { type: 'image/svg+xml' }));
+  } else {
+    stage(u, new File([new Uint8Array(11 * 1024 * 1024)], 'huge.pdf', { type: 'application/pdf' }));
+  }
+}
+
+/* Same as api() but multipart: the browser must set Content-Type itself (it adds the boundary). */
+async function upload(u, path, form, file) {
+  const url = $('serverUrl').value.trim().replace(/\/$/, '') + path;
+  addLog(u, 'rest', `POST ${path}`, { file: file.name, type: file.type || '(none)', size: fmtSize(file.size), caption: form.get('caption') || undefined });
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + readToken(u) }, body: form });
+    let json = null; try { json = await r.json(); } catch {}
+    addLog(u, 'rest', `→ ${r.status}`, r.ok ? json : undefined);
+    if (!r.ok) {
+      // The size limit is enforced by the upload middleware before our code runs, so that 413 has no `code`
+      const body = json && json.code ? json
+        : r.status === 413 ? { code: 'ATTACHMENT_TOO_LARGE', message: 'The file is larger than the server allows.' }
+        : { code: 'HTTP_' + r.status, message: json?.message || r.statusText || 'Request failed' };
+      showBanner(u, { statusCode: r.status, ...body });
+    }
+    return { ok: r.ok, status: r.status, json };
+  } catch (e) {
+    addLog(u, 'error', 'Upload failed', { message: e.message });
+    showBanner(u, { code: 'NETWORK', message: 'Could not reach the server. If it is up, this is usually CORS: add this page\'s origin (“null” for file://) to CORS_ALLOWED_ORIGINS.' });
+    return { ok: false };
+  }
+}
+
+async function sendAttachment(u) {
+  const st = U[u]; if (!st.staged) return;
+  const id = convOf(u); if (!id) return;
+  hideBanner(u);
+  const ta = $('msg' + u), caption = ta.value.trim(), file = st.staged.file;
+  const form = new FormData();
+  form.append('file', file, file.name);
+  if (caption) form.append('caption', caption);
+  const btn = $('sendAtt' + u); btn.disabled = true; btn.textContent = 'Uploading…';
+  const r = await upload(u, `/chat/conversations/${encodeURIComponent(id)}/attachments`, form, file);
+  btn.textContent = 'Send attachment';
+  if (r.ok) { addBubble(u, r.json); ta.value = ''; stopTyping(u); clearStaged(u); }
+  else btn.disabled = !st.staged;
+}
+
+/* Voice notes: record, then the clip is staged so it can be played back before sending */
+const REC_TYPES = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm'];
+const recExt = (mime) => (mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : 'webm');
+
+async function toggleRecord(u) {
+  const st = U[u];
+  if (st.rec) { st.rec.recorder.stop(); return; }
+  if (typeof MediaRecorder === 'undefined') { showBanner(u, { code: 'NO_RECORDER', message: 'This browser cannot record audio (no MediaRecorder).' }); return; }
+  hideBanner(u);
+
+  let stream, stopSource = () => {};
+  try {
+    if ($('tone' + u).checked) { // same test-tone switch the call section uses
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ac.createOscillator(), gain = ac.createGain(), dest = ac.createMediaStreamDestination();
+      osc.frequency.value = u === 'A' ? 440 : 554; gain.gain.value = 0.15;
+      osc.connect(gain); gain.connect(dest); osc.start();
+      stream = dest.stream; stopSource = () => { try { osc.stop(); ac.close(); } catch {} };
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    }
+  } catch (e) {
+    showBanner(u, { code: 'NO_AUDIO', message: 'Could not get audio: ' + e.message + '. Tick “test tone” in the call section to record without a microphone.' });
+    return;
+  }
+
+  const mime = REC_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+  const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const chunks = [], t0 = Date.now(), timerEl = $('recTimer' + u);
+  st.rec = { recorder, discard: false };
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => {
+    clearInterval(st.recTimer); timerEl.hidden = true; stopSource();
+    stream.getTracks().forEach((t) => t.stop());
+    const discard = st.rec?.discard; st.rec = null;
+    const btn = $('recBtn' + u); btn.classList.remove('on'); btn.textContent = '🎤 Record voice note';
+    if (discard) return;
+    const type = recorder.mimeType || mime || 'audio/webm', seconds = Math.round((Date.now() - t0) / 1000);
+    const blob = new Blob(chunks, { type });
+    if (!blob.size) { showBanner(u, { code: 'NO_AUDIO', message: 'Nothing was recorded.' }); return; }
+    stage(u, new File([blob], `voice-${Date.now()}.${recExt(type)}`, { type }));
+    addLog(u, 'system', 'Voice note recorded', { seconds, size: fmtSize(blob.size), type });
+  };
+  recorder.start();
+  const btn = $('recBtn' + u); btn.classList.add('on'); btn.textContent = 'Stop recording';
+  timerEl.hidden = false; timerEl.textContent = '00:00';
+  st.recTimer = setInterval(() => { timerEl.textContent = mmss(Math.floor((Date.now() - t0) / 1000)); }, 250);
+}
+
+for (const u of ['A', 'B']) {
+  $('file' + u).addEventListener('change', (e) => { const f = e.target.files[0]; if (f) stage(u, f); });
+}
+
+/* ═════════════════════════════════ call: UI state ═════════════════════════════════ */
+const BADGES = { idle: 'Idle', calling: 'Calling…', ringing: 'Ringing', incoming: 'Incoming', connecting: 'Connecting', active: 'In call', ended: 'Ended', declined: 'Declined', cancelled: 'Cancelled', missed: 'Missed', failed: 'Failed' };
+function setBadge(u, key) { const b = $('badge' + u); b.className = 'badge ' + key; b.textContent = BADGES[key] || key; }
+
+function setPhase(u, phase) {
+  const st = U[u]; st.phase = phase;
+  const idle = phase === 'idle';
+  $('btnCall' + u).disabled = !idle;
+  $('btnVideo' + u).disabled = !idle;
+  $('btnCam' + u).disabled = !((phase === 'connecting' || phase === 'active' || phase === 'outgoing') && st.stream?.getVideoTracks().length);
+  $('btnCancel' + u).disabled = !(phase === 'outgoing');
+  $('btnEnd' + u).disabled = !(phase === 'connecting' || phase === 'active');
+  $('btnMute' + u).disabled = !(phase === 'connecting' || phase === 'active' || phase === 'outgoing');
+  $('incoming' + u).classList.toggle('show', phase === 'incoming');
+  $('cid' + u).textContent = st.callId ? 'call ' + st.callId.slice(0, 8) : '';
+}
+
+function startTimer(u, startedAt) {
+  const st = U[u]; stopTimer(u);
+  st.startedAt = startedAt ? new Date(startedAt).getTime() : Date.now();
+  const el = $('timer' + u); el.hidden = false;
+  const tick = () => { const s = Math.max(0, Math.floor((Date.now() - st.startedAt) / 1000)); el.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+  tick(); st.timer = setInterval(tick, 500);
+}
+function stopTimer(u) { clearInterval(U[u].timer); U[u].timer = null; $('timer' + u).hidden = true; }
+
+/* ═════════════════════════════════ call: media + peer ═════════════════════════════════ */
+/* Animated stand-in for a camera: a moving dot and a live clock, so the other side can see frames are fresh. */
+function makeTestVideo(u) {
+  const c = document.createElement('canvas'); c.width = 320; c.height = 240;
+  const g = c.getContext('2d'), hue = u === 'A' ? 215 : 28;
+  const draw = () => {
+    const t = Date.now() / 1000;
+    g.fillStyle = `hsl(${hue} 55% 22%)`; g.fillRect(0, 0, 320, 240);
+    g.fillStyle = `hsl(${hue} 80% 62%)`; g.beginPath(); g.arc(160 + Math.cos(t * 2) * 100, 120 + Math.sin(t * 3) * 55, 22, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff'; g.textAlign = 'center';
+    g.font = '600 26px sans-serif'; g.fillText(ROLES[u] + ' test video', 160, 48);
+    g.font = '600 30px monospace'; g.fillText(new Date().toLocaleTimeString(), 160, 215);
+  };
+  draw(); const iv = setInterval(draw, 66);
+  return { track: c.captureStream(15).getVideoTracks()[0], stop: () => clearInterval(iv) };
+}
+
+/* type 'voice' → audio only. type 'video' → audio + camera (or the test pattern). */
+async function getMedia(u, type = 'voice') {
+  const st = U[u], stops = [], stream = new MediaStream();
+  let stage = 'audio';
+  try {
+    if ($('tone' + u).checked) {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ac.createOscillator(), gain = ac.createGain(), dest = ac.createMediaStreamDestination();
+      osc.frequency.value = u === 'A' ? 440 : 554; gain.gain.value = 0.15;
+      osc.connect(gain); gain.connect(dest); osc.start();
+      dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+      stops.push(() => { try { osc.stop(); ac.close(); } catch {} });
+      addLog(u, 'rtc', 'Using test tone', { hz: osc.frequency.value });
+    } else {
+      const a = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      a.getAudioTracks().forEach((t) => stream.addTrack(t));
+      addLog(u, 'rtc', 'Microphone acquired');
+    }
+    if (type === 'video') {
+      stage = 'video';
+      if ($('testvid' + u).checked) {
+        const tv = makeTestVideo(u); stream.addTrack(tv.track); stops.push(tv.stop);
+        addLog(u, 'rtc', 'Using test video pattern');
+      } else {
+        const v = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } });
+        v.getVideoTracks().forEach((t) => stream.addTrack(t));
+        addLog(u, 'rtc', 'Camera acquired', { settings: v.getVideoTracks()[0].getSettings() });
+      }
+    }
+    st.stream = stream; st.stopTone = () => stops.forEach((f) => f());
+    if (type === 'video') {
+      const lv = $('localVid' + u); lv.srcObject = new MediaStream(stream.getVideoTracks()); lv.play?.().catch(() => {});
+    }
+    return true;
+  } catch (e) {
+    stream.getTracks().forEach((t) => t.stop()); stops.forEach((f) => f());
+    showBanner(u, stage === 'video'
+      ? { code: 'NO_CAMERA', message: 'Could not get the camera: ' + e.message + '. Tick “test video pattern” to test without a camera.' }
+      : { code: 'NO_AUDIO', message: 'Could not get audio: ' + e.message + '. Tick “test tone” to test without a microphone.' });
+    return false;
+  }
+}
+
+function showVideoArea(u, show) {
+  $('vids' + u).classList.toggle('show', show);
+  if (show) $('vph' + u).classList.remove('hide');
+  const ct = $('ctype' + u); ct.hidden = !show; ct.textContent = '📹 video call';
+}
+
+function createPeer(u, iceServers) {
+  const st = U[u];
+  st.pc?.close();
+  st.iceIn = []; st.iceOut = [];
+  const pc = new RTCPeerConnection({ iceServers: iceServers || [{ urls: 'stun:stun.l.google.com:19302' }] });
+  st.pc = pc;
+  st.stream?.getTracks().forEach((t) => pc.addTrack(t, st.stream));
+
+  pc.onicecandidate = (ev) => {
+    if (!ev.candidate) return;
+    const c = { candidate: ev.candidate.candidate, sdpMid: ev.candidate.sdpMid, sdpMLineIndex: ev.candidate.sdpMLineIndex };
+    if (st.callId && st.call?.connected) { st.call.emit('call_ice_candidate', { callId: st.callId, ...c }); addLog(u, 'sent', 'call · call_ice_candidate', c); }
+    else st.iceOut.push(c);
+  };
+  pc.oniceconnectionstatechange = () => {
+    addLog(u, 'rtc', 'ICE state', { state: pc.iceConnectionState });
+    if (pc.iceConnectionState === 'failed') addLog(u, 'error', 'ICE failed', { hint: 'Usually means no TURN server is configured and the networks cannot connect directly.' });
+  };
+  pc.ontrack = (ev) => {
+    addLog(u, 'rtc', `Remote ${ev.track.kind} track received`);
+    const remote = ev.streams[0] || new MediaStream([ev.track]);
+    if (ev.track.kind === 'video') {
+      showVideoArea(u, true);
+      const rv = $('remoteVid' + u); rv.srcObject = remote;
+      rv.onplaying = () => { $('vph' + u).classList.add('hide'); addLog(u, 'rtc', 'Receiving video from the other side ✔'); };
+      rv.play?.().catch(() => {});
+      return;
+    }
+    const audio = $('remote' + u);
+    audio.srcObject = remote;
+    audio.play?.().catch(() => {});
+    watchLevel(u, audio.srcObject);
+  };
+  addLog(u, 'rtc', 'Peer connection created', { servers: (iceServers || []).map((s) => s.urls) });
+  return pc;
+}
+
+function flushOutIce(u) {
+  const st = U[u];
+  for (const c of st.iceOut) { st.call.emit('call_ice_candidate', { callId: st.callId, ...c }); addLog(u, 'sent', 'call · call_ice_candidate', c); }
+  st.iceOut = [];
+}
+async function flushInIce(u) { const st = U[u]; for (const c of st.iceIn) await st.pc.addIceCandidate(c).catch(() => {}); st.iceIn = []; }
+
+/* Live proof that audio actually arrives: a level bar fed by WebAudio on the remote stream */
+function watchLevel(u, stream) {
+  const st = U[u]; stopLevel(u);
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const an = ctx.createAnalyser(); an.fftSize = 256;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.frequencyBinCount); st.meterCtx = ctx; let heard = false;
+    const loop = () => {
+      an.getByteTimeDomainData(buf);
+      let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+      $('meter' + u).style.width = Math.min(100, peak * 2.2) + '%';
+      if (!heard && peak > 4) { heard = true; addLog(u, 'rtc', 'Receiving audio from the other side ✔'); }
+      st.meterRaf = requestAnimationFrame(loop);
+    };
+    loop();
+  } catch (e) { addLog(u, 'rtc', 'Level meter unavailable', { message: e.message }); }
+}
+function stopLevel(u) {
+  const st = U[u]; cancelAnimationFrame(st.meterRaf); st.meterRaf = 0;
+  try { st.meterCtx?.close(); } catch {} st.meterCtx = null; $('meter' + u).style.width = '0';
+}
+
+function cleanupCall(u, badge, quiet) {
+  const st = U[u];
+  st.pc?.close(); st.pc = null;
+  st.stream?.getTracks().forEach((t) => t.stop()); st.stream = null;
+  st.stopTone?.(); st.stopTone = null;
+  $('remote' + u).srcObject = null;
+  $('remoteVid' + u).srcObject = null; $('localVid' + u).srcObject = null;
+  showVideoArea(u, false); st.callType = 'voice';
+  $('btnCam' + u).textContent = 'Camera off';
+  stopLevel(u); stopTimer(u);
+  st.callId = null; st.ice = null; st.isCaller = false; st.answering = false; st.iceIn = []; st.iceOut = []; st.peerJoinedPending = false;
+  $('btnMute' + u).textContent = 'Mute mic';
+  setPhase(u, 'idle'); setBadge(u, badge);
+  if (!quiet) addLog(u, 'rtc', 'Call cleaned up', { state: badge });
+}
+
+/* ═════════════════════════════════ call: actions ═════════════════════════════════ */
+async function startCall(u, type = 'voice') {
+  const st = U[u], ride = rideIdOf(u); if (!ride) return;
+  if (!st.call?.connected) { showBanner(u, { code: 'NOT_CONNECTED', message: 'The /call socket is not connected for this user.' }); return; }
+  hideBanner(u);
+  if (!(await getMedia(u, type))) return;
+
+  st.callType = type; if (type === 'video') showVideoArea(u, true);
+  setPhase(u, 'outgoing'); setBadge(u, 'calling'); st.isCaller = true;
+  createPeer(u, null);
+
+  const ack = await emitAck(u, 'call', 'call_initiate', { rideId: ride, type });
+  if (!ack || !ack.success) { cleanupCall(u, 'idle', true); return; }   // refused: no call exists, nothing to negotiate
+
+  st.callId = ack.callId; st.ice = ack.iceServers;
+  try { st.pc.setConfiguration({ iceServers: ack.iceServers }); } catch (e) { addLog(u, 'error', 'setConfiguration failed', { message: e.message }); }
+  setPhase(u, 'outgoing'); setBadge(u, 'ringing');
+  if (!ack.calleeOnline) addLog(u, 'system', 'Callee has no open call socket', { note: 'A push was sent. The call rings for 30s and is re-delivered if they connect in time.' });
+  flushOutIce(u);
+  if (st.peerJoinedPending) { st.peerJoinedPending = false; sendOffer(u); }
+}
+
+async function sendOffer(u) {
+  const st = U[u];
+  try {
+    const offer = await st.pc.createOffer();
+    await st.pc.setLocalDescription(offer);
+    await emitAck(u, 'call', 'call_offer', { callId: st.callId, sdpType: 'offer', sdp: offer.sdp });
+    addLog(u, 'rtc', 'Offer created and sent');
+  } catch (e) { addLog(u, 'error', 'Could not create offer', { message: e.message }); }
+}
+
+async function answerCall(u, audioOnly = false) {
+  const st = U[u]; if (!st.callId) return;
+  hideBanner(u); st.answering = true;
+  const type = st.callType === 'video' && !audioOnly ? 'video' : 'voice';
+  if (!(await getMedia(u, type))) { declineCall(u); return; }
+  if (st.callType === 'video') showVideoArea(u, true);
+  if (audioOnly) addLog(u, 'rtc', 'Answering a video call without a camera');
+  setPhase(u, 'connecting'); setBadge(u, 'connecting');
+  createPeer(u, st.ice);
+  const ack = await emitAck(u, 'call', 'call_join', { callId: st.callId });
+  if (!ack || !ack.success) { cleanupCall(u, 'failed'); return; }
+  // From here the caller sends an offer, which we answer in the call_offer handler.
+}
+function declineCall(u) { const st = U[u]; if (st.callId) emitAck(u, 'call', 'call_decline', { callId: st.callId }); cleanupCall(u, 'declined', true); }
+function cancelCall(u) { const st = U[u]; if (st.callId) emitAck(u, 'call', 'call_cancel', { callId: st.callId }); cleanupCall(u, 'cancelled', true); }
+function endCall(u) { const st = U[u]; if (st.callId) emitAck(u, 'call', 'call_end', { callId: st.callId }); }   // wait for the server's call_ended
+function toggleCam(u) {
+  const t = U[u].stream?.getVideoTracks()[0]; if (!t) return;
+  t.enabled = !t.enabled; $('btnCam' + u).textContent = t.enabled ? 'Camera off' : 'Camera on';
+  addLog(u, 'rtc', t.enabled ? 'Camera on' : 'Camera off', { note: 'The other side just sees a black frame. The server has no event for this.' });
+}
+function toggleMute(u) {
+  const t = U[u].stream?.getAudioTracks()[0]; if (!t) return;
+  t.enabled = !t.enabled; $('btnMute' + u).textContent = t.enabled ? 'Mute mic' : 'Unmute mic';
+  addLog(u, 'rtc', t.enabled ? 'Mic unmuted' : 'Mic muted');
+}
+
+/* ═════════════════════════════════ call: server events ═════════════════════════════════ */
+function bindCall(u, s) {
+  const st = U[u];
+
+  s.on('call_incoming', (d) => {
+    if (st.phase !== 'idle') { addLog(u, 'system', 'Ignored incoming call: already in a call', { callId: d.callId }); return; }
+    st.callId = d.callId; st.ice = d.iceServers; st.isCaller = false;
+    st.callType = d.type === 'video' ? 'video' : 'voice';
+    const video = st.callType === 'video';
+    $('callerName' + u).textContent = d.caller?.name || 'Someone';
+    $('callKind' + u).textContent = video ? 'is video calling' : 'is calling';
+    $('answerAudio' + u).hidden = !video;
+    const ct = $('ctype' + u); ct.hidden = !video; ct.textContent = '📹 video call';
+    setPhase(u, 'incoming'); setBadge(u, 'incoming');
+  });
+
+  s.on('call_peer_joined', () => {
+    if (!st.isCaller) return;                       // only the caller creates the offer
+    if (st.pc && st.callId) sendOffer(u); else { st.peerJoinedPending = true; addLog(u, 'rtc', 'Callee joined before the initiate ack arrived — offer deferred'); }
+  });
+
+  s.on('call_offer', async (d) => {
+    if (!st.pc) return;
+    try {
+      await st.pc.setRemoteDescription({ type: d.sdpType, sdp: d.sdp });
+      await flushInIce(u);
+      const answer = await st.pc.createAnswer();
+      await st.pc.setLocalDescription(answer);
+      await emitAck(u, 'call', 'call_answer', { callId: st.callId, sdpType: 'answer', sdp: answer.sdp });
+      flushOutIce(u);
+    } catch (e) { addLog(u, 'error', 'Could not answer offer', { message: e.message }); }
+  });
+
+  s.on('call_answer', async (d) => {
+    if (!st.pc) return;
+    try { await st.pc.setRemoteDescription({ type: d.sdpType, sdp: d.sdp }); await flushInIce(u); }
+    catch (e) { addLog(u, 'error', 'Could not apply answer', { message: e.message }); }
+  });
+
+  s.on('call_ice_candidate', async (d) => {
+    const c = { candidate: d.candidate, sdpMid: d.sdpMid, sdpMLineIndex: d.sdpMLineIndex };
+    if (st.pc && st.pc.remoteDescription) await st.pc.addIceCandidate(c).catch(() => {}); else st.iceIn.push(c);
+  });
+
+  s.on('call_active', (d) => { setPhase(u, 'active'); setBadge(u, 'active'); startTimer(u, d.startedAt); });
+
+  // Terminal events go to both users on all devices
+  s.on('call_ended', () => cleanupCall(u, 'ended'));
+  s.on('call_declined', () => cleanupCall(u, 'declined'));
+  s.on('call_cancelled', () => cleanupCall(u, 'cancelled'));
+  s.on('call_missed', () => cleanupCall(u, 'missed'));
+  s.on('call_failed', (d) => { addLog(u, 'error', 'Call failed', d); cleanupCall(u, 'failed'); });
+  s.on('call_handled_elsewhere', () => { if (!st.answering) cleanupCall(u, 'idle'); });
+}
+
+/* ═════════════════════════════ remember settings ═════════════════════════════ */
+function saveSettings() {
+  try { localStorage.setItem('surdrive-tester', JSON.stringify({ server: $('serverUrl').value, ride: $('rideId').value, A: $('tokenA').value, B: $('tokenB').value })); } catch {}
+}
+(function restore() {
+  try {
+    const s = JSON.parse(localStorage.getItem('surdrive-tester') || 'null'); if (!s) return;
+    $('serverUrl').value = s.server || $('serverUrl').value; $('rideId').value = s.ride || '';
+    $('tokenA').value = s.A || ''; $('tokenB').value = s.B || '';
+    describeToken('A'); describeToken('B');
+  } catch {}
+})();
+['serverUrl', 'rideId'].forEach((id) => $(id).addEventListener('change', saveSettings));
+</script>
+</body>
+</html>
