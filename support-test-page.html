@@ -1,0 +1,2429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Support Module Tester</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface2: #22263a;
+        --border: #2e3350;
+        --accent-a: #9a7bff;
+        --accent-b: #ff6ca8;
+        --rest: #35c9c1;
+        --text: #e8eaf6;
+        --muted: #7b82a8;
+        --success: #4caf50;
+        --warning: #ffa726;
+        --error: #ef5350;
+        --radius: 10px;
+        --font: "Segoe UI", system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        font-size: 14px;
+        display: flex;
+        flex-direction: column;
+      }
+      .hidden {
+        display: none !important;
+      }
+      :focus-visible {
+        outline: 2px solid var(--rest);
+        outline-offset: 2px;
+      }
+
+      /* ── Header + server bar ───────────────────────────── */
+      header {
+        padding: 14px 24px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--surface);
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+      header .badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        background: var(--surface2);
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      header .spacer {
+        flex: 1;
+      }
+
+      .server-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 24px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
+      .server-bar label {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .server-bar input[type="text"] {
+        flex: 1;
+        min-width: 200px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 6px 10px;
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+      .server-bar .hint {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      /* ── Panels ────────────────────────────────────────── */
+      .main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        min-height: 0;
+      }
+      .panel {
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+      .panel:last-child {
+        border-right: none;
+      }
+      .panel-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+      .user-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .panel-a .user-dot {
+        background: var(--accent-a);
+      }
+      .panel-b .user-dot {
+        background: var(--accent-b);
+      }
+      .panel-header h2 {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .panel-header .sub {
+        font-size: 11px;
+        color: var(--muted);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .status-pill {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-weight: 500;
+      }
+      .status-pill.disconnected {
+        background: #2a1a1a;
+        color: var(--error);
+        border: 1px solid #5a2020;
+      }
+      .status-pill.connected {
+        background: #1a2e1a;
+        color: var(--success);
+        border: 1px solid #205a20;
+      }
+      .status-pill.connecting {
+        background: #2a2a1a;
+        color: var(--warning);
+        border: 1px solid #5a4a20;
+      }
+
+      .panel-scroll {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .config-section,
+      .actions-section {
+        flex-shrink: 0;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .divider {
+        font-size: 11px;
+        color: var(--muted);
+        padding: 4px 0 0;
+        font-weight: 600;
+      }
+
+      .field-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .field-row label {
+        font-size: 11px;
+        color: var(--muted);
+        width: 84px;
+        flex-shrink: 0;
+      }
+      .field-row input,
+      .field-row select,
+      .field-row textarea {
+        flex: 1;
+        min-width: 0;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 6px 10px;
+        font-family: var(--font);
+        font-size: 12px;
+        resize: none;
+      }
+      .field-row input[type="file"] {
+        padding: 4px;
+      }
+      .field-row input:focus,
+      .field-row select:focus,
+      .field-row textarea:focus {
+        outline: none;
+        border-color: var(--accent-a);
+      }
+      .panel-b .field-row input:focus,
+      .panel-b .field-row select:focus,
+      .panel-b .field-row textarea:focus {
+        border-color: var(--accent-b);
+      }
+      .field-row .mono {
+        font-family: var(--mono);
+      }
+      .btn-row,
+      .actions-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      button {
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: none;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: var(--font);
+        transition: opacity 0.15s;
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .btn-primary-a {
+        background: var(--accent-a);
+        color: #130d2b;
+      }
+      .btn-primary-b {
+        background: var(--accent-b);
+        color: #2b0d1c;
+      }
+      .btn-rest {
+        background: transparent;
+        color: var(--rest);
+        border: 1px solid var(--rest);
+      }
+      .btn-secondary {
+        background: var(--surface2);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn-danger {
+        background: transparent;
+        color: var(--error);
+        border: 1px solid var(--error);
+      }
+      .btn-ok {
+        background: transparent;
+        color: var(--success);
+        border: 1px solid var(--success);
+      }
+
+      details.collapsible {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      details.collapsible > summary {
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        list-style: none;
+      }
+      details.collapsible > summary::-webkit-details-marker {
+        display: none;
+      }
+      details.collapsible > summary::before {
+        content: "▸";
+        display: inline-block;
+        width: 14px;
+        color: var(--muted);
+      }
+      details.collapsible[open] > summary::before {
+        content: "▾";
+      }
+      details.collapsible .inner {
+        padding: 4px 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .note {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      /* ── Chips ─────────────────────────────────────────── */
+      .chip {
+        display: inline-block;
+        font-size: 10.5px;
+        line-height: 1;
+        padding: 3px 7px;
+        border-radius: 20px;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .chip-open {
+        background: #2a2150;
+        color: #b9a6ff;
+        border-color: #43358a;
+      }
+      .chip-prog {
+        background: #162a44;
+        color: #7db8ff;
+        border-color: #234a78;
+      }
+      .chip-done {
+        background: #16301f;
+        color: #6fd58a;
+        border-color: #25522f;
+      }
+      .chip-p-low {
+        background: #252a38;
+        color: #a3abc9;
+        border-color: #343b52;
+      }
+      .chip-p-medium {
+        background: #3a2c12;
+        color: #ffc66b;
+        border-color: #5e4719;
+      }
+      .chip-p-high {
+        background: #3b1818;
+        color: #ff8a85;
+        border-color: #652525;
+      }
+      .chip-warn {
+        background: #3a2c12;
+        color: #ffc66b;
+        border-color: #5e4719;
+      }
+      .chip-info {
+        background: #162a3a;
+        color: #7dd3ff;
+        border-color: #23506e;
+      }
+      .chip-yes {
+        background: #16301f;
+        color: #6fd58a;
+        border-color: #25522f;
+      }
+      .chip-no {
+        background: #252a38;
+        color: #6f7694;
+        border-color: #343b52;
+      }
+
+      /* ── Lists (inbox) ─────────────────────────────────── */
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 230px;
+        overflow-y: auto;
+      }
+      .row {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .row:hover {
+        border-color: var(--muted);
+      }
+      .row.active {
+        border-color: var(--accent-a);
+      }
+      .panel-b .row.active {
+        border-color: var(--accent-b);
+      }
+      .row-top {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .row-title {
+        font-size: 12.5px;
+      }
+      .row-sub {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .stats {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .stat {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 5px 9px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .stat b {
+        color: var(--text);
+        font-size: 13px;
+        margin-right: 4px;
+      }
+
+      /* ── Viewer: chat + events ─────────────────────────── */
+      .viewer {
+        flex: 1 0 440px;
+        display: flex;
+        flex-direction: column;
+        min-height: 440px;
+      }
+      .tabs {
+        display: flex;
+        gap: 2px;
+        padding: 6px 16px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .tab {
+        background: transparent;
+        color: var(--muted);
+        border-radius: 6px 6px 0 0;
+        border-bottom: 2px solid transparent;
+        padding: 6px 12px;
+      }
+      .tab.active {
+        color: var(--text);
+        border-bottom-color: var(--accent-a);
+      }
+      .panel-b .tab.active {
+        border-bottom-color: var(--accent-b);
+      }
+      .tab-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .ticket-head {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        background: var(--surface);
+      }
+      .ticket-head .line {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .ticket-head .ref {
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .ticket-head .subject {
+        font-size: 12.5px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+
+      .thread {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 220px;
+      }
+      .bubble {
+        max-width: 78%;
+        padding: 8px 11px;
+        border-radius: 12px;
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .bubble .meta {
+        display: block;
+        font-size: 10px;
+        opacity: 0.65;
+        margin-top: 3px;
+      }
+      .bubble.mine {
+        align-self: flex-end;
+        background: #5b3fb8;
+        color: #fff;
+        border-bottom-right-radius: 3px;
+      }
+      .panel-b .bubble.mine {
+        background: #b13a74;
+      }
+      .bubble.theirs,
+      .bubble.bot {
+        align-self: flex-start;
+        background: var(--surface2);
+        border-bottom-left-radius: 3px;
+      }
+      .bubble.bot {
+        border: 1px dashed var(--border);
+      }
+      .bubble img {
+        display: block;
+        max-width: 220px;
+        max-height: 180px;
+        border-radius: 8px;
+        margin-bottom: 4px;
+      }
+      .bubble audio {
+        display: block;
+        max-width: 240px;
+        margin-bottom: 4px;
+      }
+      .bubble a.file {
+        color: inherit;
+        text-decoration: underline;
+      }
+      .sys {
+        align-self: center;
+        font-size: 11px;
+        color: var(--muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 4px 12px;
+        text-align: center;
+        max-width: 90%;
+      }
+      .sys time {
+        margin-left: 8px;
+        opacity: 0.6;
+      }
+      .seen {
+        align-self: flex-end;
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: -4px;
+      }
+      .typing {
+        padding: 0 16px 6px;
+        min-height: 20px;
+        font-size: 11px;
+        color: var(--muted);
+        font-style: italic;
+      }
+      .banner {
+        margin: 0 16px 10px;
+        padding: 9px 12px;
+        border-radius: 8px;
+        background: #16301f;
+        border: 1px solid #25522f;
+        color: #9be3b0;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      .events-log {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .empty-state {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+        padding: 24px 0;
+      }
+      .event-entry {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left-width: 3px;
+        border-radius: 6px;
+        padding: 6px 8px;
+      }
+      .event-entry.sent {
+        border-left-color: var(--accent-a);
+      }
+      .event-entry.received {
+        border-left-color: var(--success);
+      }
+      .event-entry.rest {
+        border-left-color: var(--rest);
+      }
+      .event-entry.error {
+        border-left-color: var(--error);
+      }
+      .event-entry.system {
+        border-left-color: var(--warning);
+      }
+      .event-tag {
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: var(--surface2);
+        color: var(--muted);
+        flex-shrink: 0;
+        margin-top: 1px;
+        font-family: var(--mono);
+      }
+      .tag-error {
+        color: var(--error);
+      }
+      .tag-received {
+        color: var(--success);
+      }
+      .tag-rest {
+        color: var(--rest);
+      }
+      .event-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .event-name {
+        font-size: 12px;
+        font-weight: 600;
+        word-break: break-all;
+      }
+      .event-data {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 150px;
+        overflow-y: auto;
+        margin-top: 3px;
+      }
+      .event-time {
+        font-size: 10px;
+        color: var(--muted);
+        flex-shrink: 0;
+        font-family: var(--mono);
+      }
+
+      .send-area {
+        flex-shrink: 0;
+        padding: 10px 16px;
+        border-top: 1px solid var(--border);
+        background: var(--surface);
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .send-area textarea {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 8px 10px;
+        font-family: var(--font);
+        font-size: 13px;
+        resize: none;
+        height: 56px;
+      }
+      .send-area textarea:focus {
+        outline: none;
+        border-color: var(--accent-a);
+      }
+      .panel-b .send-area textarea:focus {
+        border-color: var(--accent-b);
+      }
+      .send-area select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 5px 8px;
+        font-size: 12px;
+      }
+
+      /* ── Flow drawer ───────────────────────────────────── */
+      .drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(560px, 100vw);
+        background: var(--surface);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        transform: translateX(102%);
+        transition: transform 0.2s ease;
+        z-index: 50;
+        box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+      }
+      .drawer.open {
+        transform: translateX(0);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .drawer {
+          transition: none;
+        }
+      }
+      .drawer-head {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .drawer-head h3 {
+        font-size: 14px;
+        flex: 1;
+      }
+      .drawer-body {
+        padding: 12px 16px;
+        overflow-y: auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 8px;
+        padding: 8px 10px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .step .icon {
+        font-size: 14px;
+        text-align: center;
+      }
+      .step .t {
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .step .d {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 2px;
+        word-break: break-word;
+      }
+      .step.pass {
+        border-color: #25522f;
+      }
+      .step.pass .icon {
+        color: var(--success);
+      }
+      .step.fail {
+        border-color: #652525;
+      }
+      .step.fail .icon,
+      .step.fail .d {
+        color: var(--error);
+      }
+      .step.run .icon {
+        color: var(--warning);
+      }
+      .step pre {
+        margin-top: 6px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--muted);
+        background: var(--surface);
+        border-radius: 6px;
+        padding: 6px 8px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 160px;
+        overflow: auto;
+      }
+      .summary {
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--surface2);
+      }
+      .summary.ok {
+        color: var(--success);
+      }
+      .summary.bad {
+        color: var(--error);
+      }
+
+      @media (max-width: 960px) {
+        .main {
+          grid-template-columns: 1fr;
+        }
+        .panel {
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🎫 Support Module Tester</h1>
+      <span class="badge">REST + Socket.IO /support</span>
+      <span class="badge">Rider / driver ⇄ Admin simulation</span>
+      <span class="spacer"></span>
+      <button class="btn-ok" id="openFlow">Run flow test</button>
+    </header>
+
+    <div class="server-bar">
+      <label for="serverUrl">Server URL</label>
+      <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="http://localhost:3000" />
+      <label class="check" title="After a ticket is created or picked, open it in the other panel too">
+        <input type="checkbox" id="shareTicket" checked /> Share ticket between panels
+      </label>
+      <span class="hint">REST: /support and /admin/support · Socket: /support</span>
+    </div>
+
+    <div class="main">
+      <!-- ══════════ RIDER / DRIVER ══════════ -->
+      <div class="panel panel-a" id="panelA">
+        <div class="panel-header">
+          <div class="user-dot"></div>
+          <h2>Rider / Driver</h2>
+          <span class="sub" id="whoA">raises tickets from the app</span>
+          <span class="status-pill disconnected" id="statusA">Disconnected</span>
+        </div>
+
+        <div class="panel-scroll">
+          <div class="config-section">
+            <div class="field-row">
+              <label for="tokenA">JWT Token</label>
+              <input type="text" id="tokenA" placeholder="Rider or ride-driver token (Bearer optional)…" autocomplete="off" />
+            </div>
+            <div class="btn-row">
+              <button class="btn-primary-a" data-act="connect" data-side="A">Connect socket</button>
+              <button class="btn-danger" data-act="disconnect" data-side="A" id="disconnectA" disabled>Disconnect</button>
+              <button class="btn-secondary" data-act="clearLog" data-side="A">Clear log</button>
+            </div>
+          </div>
+
+          <div class="actions-section">
+            <details class="collapsible" open>
+              <summary>Raise a support ticket</summary>
+              <div class="inner">
+                <div class="field-row">
+                  <label for="subjectA">Subject</label>
+                  <input type="text" id="subjectA" maxlength="150" placeholder="Missing fare refund after cancelled ride" />
+                </div>
+                <div class="field-row">
+                  <label for="descriptionA">Description</label>
+                  <textarea id="descriptionA" rows="3" maxlength="2000" placeholder="Ride was cancelled by the driver but the refund has not appeared in my wallet yet."></textarea>
+                </div>
+                <div class="field-row">
+                  <label for="priorityA">Priority</label>
+                  <select id="priorityA">
+                    <option value="">(default: medium)</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="rideA">Ride</label>
+                  <select id="rideA">
+                    <option value="">(no ride)</option>
+                  </select>
+                  <button class="btn-rest" data-act="loadRides">Load my rides</button>
+                </div>
+                <div class="btn-row">
+                  <button class="btn-primary-a" data-act="createTicket">Create ticket</button>
+                  <button class="btn-secondary" data-act="fillSample">Fill sample</button>
+                </div>
+              </div>
+            </details>
+
+            <details class="collapsible">
+              <summary>My tickets (filter sheet)</summary>
+              <div class="inner">
+                <div class="field-row">
+                  <label for="fStatusA">Status</label>
+                  <select id="fStatusA">
+                    <option value="">All</option>
+                    <option value="open">Open (open + in progress)</option>
+                    <option value="closed">Closed (resolved)</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="fPriorityA">Priority</label>
+                  <select id="fPriorityA">
+                    <option value="">All</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="fStartA">Start date</label>
+                  <input type="date" id="fStartA" />
+                  <input type="date" id="fEndA" aria-label="End date" />
+                </div>
+                <div class="btn-row">
+                  <button class="btn-rest" data-act="listMine">Apply</button>
+                  <button class="btn-secondary" data-act="resetMine">Reset</button>
+                  <button class="btn-rest" data-act="unreadSummary">Unread summary</button>
+                </div>
+                <div class="list" id="inboxA"><div class="empty-state">Apply to load your tickets</div></div>
+              </div>
+            </details>
+
+            <div class="divider">Current ticket</div>
+            <div class="field-row">
+              <label for="ticketIdA">Ticket ID</label>
+              <input type="text" class="mono" id="ticketIdA" placeholder="Auto-filled on create, or paste one" />
+            </div>
+            <div class="btn-row">
+              <button class="btn-primary-a" data-act="openTicket" data-side="A">Open</button>
+              <button class="btn-rest" data-act="getTicket" data-side="A">Get ticket</button>
+              <button class="btn-rest" data-act="getMessages" data-side="A">Get messages</button>
+              <button class="btn-rest" data-act="markRead" data-side="A">Mark read</button>
+              <button class="btn-ok" data-act="resolveA">Mark resolved</button>
+              <button class="btn-secondary" data-act="reopen" data-side="A">Reopen</button>
+            </div>
+            <div class="field-row">
+              <label for="fileA">Attachment</label>
+              <input type="file" id="fileA" />
+              <input type="text" id="captionA" placeholder="Caption (optional)" />
+              <button class="btn-rest" data-act="sendAttachment" data-side="A">Send file</button>
+            </div>
+          </div>
+
+          <div id="viewerA"></div>
+        </div>
+      </div>
+
+      <!-- ══════════ ADMIN ══════════ -->
+      <div class="panel panel-b" id="panelB">
+        <div class="panel-header">
+          <div class="user-dot"></div>
+          <h2>Admin</h2>
+          <span class="sub" id="whoB">ADMIN / SUPER_ADMIN</span>
+          <span class="status-pill disconnected" id="statusB">Disconnected</span>
+        </div>
+
+        <div class="panel-scroll">
+          <div class="config-section">
+            <div class="field-row">
+              <label for="tokenB">JWT Token</label>
+              <input type="text" id="tokenB" placeholder="Admin or super-admin token (Bearer optional)…" autocomplete="off" />
+            </div>
+            <div class="btn-row">
+              <button class="btn-primary-b" data-act="connect" data-side="B">Connect socket</button>
+              <button class="btn-danger" data-act="disconnect" data-side="B" id="disconnectB" disabled>Disconnect</button>
+              <button class="btn-secondary" data-act="clearLog" data-side="B">Clear log</button>
+            </div>
+          </div>
+
+          <div class="actions-section">
+            <div class="btn-row">
+              <button class="btn-rest" data-act="getStats">Inbox stats</button>
+            </div>
+            <div class="stats" id="statsB"></div>
+
+            <details class="collapsible" open>
+              <summary>Inbox</summary>
+              <div class="inner">
+                <div class="field-row">
+                  <label for="fStatusB">Status</label>
+                  <select id="fStatusB">
+                    <option value="">(any)</option>
+                    <option value="open">open</option>
+                    <option value="in_progress">in_progress</option>
+                    <option value="resolved">resolved</option>
+                  </select>
+                  <select id="fPriorityB" aria-label="Priority">
+                    <option value="">(any priority)</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="fAssigneeB">Assignee</label>
+                  <select id="fAssigneeB">
+                    <option value="">(anyone)</option>
+                    <option value="unassigned">unassigned</option>
+                    <option value="me">assigned to me</option>
+                  </select>
+                  <select id="fRoleB" aria-label="Requester role">
+                    <option value="">(rider + driver)</option>
+                    <option value="rider">rider</option>
+                    <option value="ride_driver">ride_driver</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="fSortB">Sort</label>
+                  <select id="fSortB">
+                    <option value="recent">recent activity</option>
+                    <option value="oldest">oldest first</option>
+                    <option value="priority">priority</option>
+                  </select>
+                  <input type="text" id="fSearchB" placeholder="TR-2048, subject, name or phone" />
+                </div>
+                <div class="field-row">
+                  <label for="fStartB">Created</label>
+                  <input type="date" id="fStartB" aria-label="Start date" />
+                  <input type="date" id="fEndB" aria-label="End date" />
+                </div>
+                <div class="btn-row">
+                  <button class="btn-primary-b" data-act="listInbox">List inbox</button>
+                  <button class="btn-secondary" data-act="resetInbox">Reset</button>
+                </div>
+                <div class="list" id="inboxB"><div class="empty-state">List the inbox to pick a ticket</div></div>
+              </div>
+            </details>
+
+            <div class="divider">Current ticket</div>
+            <div class="field-row">
+              <label for="ticketIdB">Ticket ID</label>
+              <input type="text" class="mono" id="ticketIdB" placeholder="Pick from the inbox, or paste one" />
+            </div>
+            <div class="btn-row">
+              <button class="btn-primary-b" data-act="openTicket" data-side="B">Open + join</button>
+              <button class="btn-rest" data-act="getTicket" data-side="B">Get ticket</button>
+              <button class="btn-rest" data-act="getMessages" data-side="B">Get messages</button>
+              <button class="btn-rest" data-act="markRead" data-side="B">Mark read</button>
+            </div>
+
+            <details class="collapsible">
+              <summary>Assign</summary>
+              <div class="inner">
+                <div class="btn-row">
+                  <button class="btn-primary-b" data-act="assignMe">Assign to me (claim)</button>
+                </div>
+                <div class="field-row">
+                  <label for="agentSelect">Assign to</label>
+                  <select id="agentSelect">
+                    <option value="">(load agents first)</option>
+                  </select>
+                  <button class="btn-rest" data-act="loadAgents">Load agents</button>
+                  <button class="btn-secondary" data-act="assignOther">Assign</button>
+                </div>
+                <div class="note">Admins can only claim unassigned tickets for themselves. Naming another agent, or taking over an owned ticket, needs a super-admin token.</div>
+              </div>
+            </details>
+
+            <details class="collapsible">
+              <summary>Change priority</summary>
+              <div class="inner">
+                <div class="field-row">
+                  <label for="prioritySelect">Priority</label>
+                  <select id="prioritySelect">
+                    <option value="low">low</option>
+                    <option value="medium" selected>medium</option>
+                    <option value="high">high</option>
+                  </select>
+                  <button class="btn-primary-b" data-act="updatePriority">Update</button>
+                </div>
+                <div class="note">Raising to high posts the "escalated" notice in the thread. Changing priority never claims the ticket.</div>
+              </div>
+            </details>
+
+            <details class="collapsible">
+              <summary>Resolve / reopen</summary>
+              <div class="inner">
+                <div class="field-row">
+                  <label for="resolutionNote">Internal note</label>
+                  <input type="text" id="resolutionNote" maxlength="1000" placeholder="Optional. Only admins see it" />
+                </div>
+                <div class="btn-row">
+                  <button class="btn-ok" data-act="resolveB">Resolve</button>
+                  <button class="btn-secondary" data-act="reopen" data-side="B">Reopen</button>
+                </div>
+              </div>
+            </details>
+
+            <div class="field-row">
+              <label for="fileB">Attachment</label>
+              <input type="file" id="fileB" />
+              <input type="text" id="captionB" placeholder="Caption (optional)" />
+              <button class="btn-rest" data-act="sendAttachment" data-side="B">Send file</button>
+            </div>
+          </div>
+
+          <div id="viewerB"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ FLOW RUNNER ══════════ -->
+    <aside class="drawer" id="flowDrawer" aria-label="Automated flow test">
+      <div class="drawer-head">
+        <h3>Automated flow test</h3>
+        <label class="check"><input type="checkbox" id="stopOnFail" checked /> Stop on first failure</label>
+        <button class="btn-secondary" id="closeFlow">Close</button>
+      </div>
+      <div class="drawer-body">
+        <div class="note">
+          Runs the full lifecycle with both tokens: raise → inbox → claim → reply → read → escalate → resolve → reopen rules. It creates one real ticket
+          (left resolved) and asserts every response. Connect both sockets first to also verify realtime delivery.
+        </div>
+        <div class="btn-row">
+          <button class="btn-ok" id="runFlow">Run flow</button>
+          <button class="btn-secondary" id="copyReport" disabled>Copy report</button>
+        </div>
+        <div id="flowSummary"></div>
+        <div id="flowSteps"></div>
+      </div>
+    </aside>
+
+    <script>
+      "use strict";
+
+      /* ══════════════════════════════════════════════════════════
+         Basics
+         ══════════════════════════════════════════════════════════ */
+      const $ = (id) => document.getElementById(id);
+      const MINE = { A: "requester", B: "agent" };
+      const WHO = { A: "Rider", B: "Admin" };
+      const other = (side) => (side === "A" ? "B" : "A");
+
+      const blank = () => ({
+        socket: null,
+        ticketId: "",
+        ticket: null,
+        messages: new Map(),
+        otherReadAt: null,
+        joined: null,
+        typing: false,
+        typingTimer: null,
+        lastTypingSent: 0,
+        stopTimer: null,
+        inboxLoaded: false,
+        inboxTimer: null,
+      });
+      const state = { A: blank(), B: blank() };
+      const bus = []; // every socket event received, for the flow runner
+
+      const store = {
+        get(k) {
+          try {
+            return sessionStorage.getItem("supportTester." + k);
+          } catch {
+            return null;
+          }
+        },
+        set(k, v) {
+          try {
+            sessionStorage.setItem("supportTester." + k, v);
+          } catch {}
+        },
+      };
+
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "");
+      const apiBase = () => $("serverUrl").value.trim().replace(/\/+$/, "");
+      const cleanToken = (t) => (t || "").trim().replace(/^Bearer\s+/i, "");
+      const token = (side) => cleanToken($("token" + side).value);
+      const base = (side) => (side === "A" ? "/support" : "/admin/support");
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      function qs(obj) {
+        const p = new URLSearchParams();
+        for (const [k, v] of Object.entries(obj)) {
+          if (v !== undefined && v !== null && String(v).trim() !== "") p.set(k, String(v).trim());
+        }
+        return p.toString();
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return "";
+        return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      }
+      function ago(iso) {
+        if (!iso) return "no messages";
+        const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+        if (s < 60) return "just now";
+        if (s < 3600) return Math.floor(s / 60) + "m ago";
+        if (s < 86400) return Math.floor(s / 3600) + "h ago";
+        return Math.floor(s / 86400) + "d ago";
+      }
+      function fmtBytes(n) {
+        if (!Number.isFinite(n)) return "";
+        return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
+      }
+      function decodeJwt(raw) {
+        try {
+          const payload = cleanToken(raw).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+          return JSON.parse(atob(payload));
+        } catch {
+          return null;
+        }
+      }
+      const jwtSub = (raw) => {
+        const p = decodeJwt(raw);
+        return p?.sub || p?.id || null;
+      };
+
+      /* ══════════════════════════════════════════════════════════
+         Event log
+         ══════════════════════════════════════════════════════════ */
+      const TAGS = { sent: "SENT", received: "RECV", error: "ERR", system: "SYS", rest: "REST" };
+
+      function addLog(side, type, name, data) {
+        const log = $("log" + side);
+        log.querySelector(".empty-state")?.remove();
+
+        let dataStr = "";
+        if (data !== null && data !== undefined && data !== "") {
+          dataStr = typeof data === "object" ? JSON.stringify(data, null, 2) : String(data);
+          if (dataStr.length > 6000) dataStr = dataStr.slice(0, 6000) + "\n… (truncated)";
+        }
+        const entry = document.createElement("div");
+        entry.className = "event-entry " + type;
+        entry.innerHTML = `
+          <span class="event-tag tag-${type}">${TAGS[type] || type}</span>
+          <div class="event-content">
+            <div class="event-name">${esc(name)}</div>
+            ${dataStr ? `<div class="event-data">${esc(dataStr)}</div>` : ""}
+          </div>
+          <span class="event-time">${new Date().toLocaleTimeString("en-GB", { hour12: false })}</span>`;
+        log.appendChild(entry);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function clearLog(side) {
+        $("log" + side).innerHTML = '<div class="empty-state">Log cleared</div>';
+      }
+
+      function setStatus(side, st) {
+        const pill = $("status" + side);
+        pill.textContent = st[0].toUpperCase() + st.slice(1);
+        pill.className = "status-pill " + st;
+        $("disconnect" + side).disabled = st !== "connected";
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         REST
+         ══════════════════════════════════════════════════════════ */
+
+      /** Raw request. Never logs, never throws on HTTP errors. */
+      async function request(tok, method, path, body) {
+        const headers = { Authorization: "Bearer " + cleanToken(tok) };
+        let payload;
+        if (body instanceof FormData) {
+          payload = body; // the browser sets the multipart boundary
+        } else if (body !== undefined) {
+          headers["Content-Type"] = "application/json";
+          payload = JSON.stringify(body);
+        }
+        const res = await fetch(apiBase() + path, { method, headers, body: payload });
+        const text = await res.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = text;
+        }
+        return { ok: res.ok, status: res.status, data };
+      }
+
+      function describeBody(body) {
+        if (!(body instanceof FormData)) return body ?? null;
+        return Object.fromEntries([...body].map(([k, v]) => [k, v instanceof File ? `${v.name} (${v.size} bytes)` : v]));
+      }
+
+      /** Logged request for the panels. Returns the data, or null on failure. */
+      async function api(side, method, path, body, { quiet = false } = {}) {
+        if (!token(side)) {
+          addLog(side, "error", "Missing token", { hint: `Paste a JWT for the ${WHO[side].toLowerCase()} first` });
+          return null;
+        }
+        if (!quiet) addLog(side, "sent", `${method} ${path}`, describeBody(body));
+        try {
+          const r = await request(token(side), method, path, body);
+          if (!r.ok) {
+            const code = r.data?.code ? ` · ${r.data.code}` : "";
+            addLog(side, "error", `${r.status} ${method} ${path}${code}`, r.data);
+            return null;
+          }
+          if (!quiet) addLog(side, "rest", `${r.status} ${method} ${path}`, r.data);
+          return r.data ?? {};
+        } catch (err) {
+          addLog(side, "error", `Network error: ${method} ${path}`, {
+            message: err.message,
+            hint: "Check the server URL and that the server is running (CORS is open for all origins)",
+          });
+          return null;
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Rendering: ticket header, chat thread, inbox rows
+         ══════════════════════════════════════════════════════════ */
+      const chip = (kind, text) => `<span class="chip chip-${kind}">${esc(text)}</span>`;
+      const statusChip = (s) => chip(s === "in_progress" ? "prog" : s === "resolved" ? "done" : "open", s);
+      const priorityChip = (p) => chip("p-" + p, p);
+      const yesNo = (label, v) => chip(v ? "yes" : "no", (v ? "✓ " : "✗ ") + label);
+      const naira = (n) => "₦" + Number(n).toLocaleString();
+
+      function renderHead(side) {
+        const t = state[side].ticket;
+        const el = $("head" + side);
+        if (!t) {
+          el.innerHTML = '<div class="muted">No ticket open. Create one or pick it from a list.</div>';
+          return;
+        }
+        let who;
+        if (side === "A") {
+          who = t.agent ? `Agent: ${esc(t.agent.name)}` : "Waiting for an agent to be assigned";
+        } else {
+          const r = t.requester || {};
+          who = `${esc(r.name || "Unknown")} (${esc(r.role || "")}${r.phoneNumber ? ", " + esc(r.phoneNumber) : ""}) · ${
+            t.assignee ? "assigned to " + esc(t.assignee.name) : "unassigned"
+          }`;
+        }
+        const ride = t.ride
+          ? `<div class="muted">Ride ${esc(t.ride.status)} · ${esc(t.ride.pickupAddress)} → ${esc(t.ride.dropoffAddress)} · ${naira(
+              t.ride.finalFare ?? t.ride.estimatedFare
+            )}${t.ride.cancellationReason ? " · cancelled: " + esc(t.ride.cancellationReason) : ""}</div>`
+          : t.rideId
+            ? `<div class="muted">Ride ${esc(t.rideId)}</div>`
+            : "";
+        const p = t.permissions;
+        const perms = p
+          ? `<div class="line">${yesNo("reply", p.canReply)}${yesNo("resolve", p.canResolve)}${yesNo("reopen", p.canReopen)}${
+              side === "B" ? yesNo("assign", p.canAssign) + yesNo("priority", p.canChangePriority) : ""
+            }</div>`
+          : "";
+        const flags =
+          (t.needsYourReply ? chip("warn", "Need your reply") : "") +
+          (t.awaitingAgent ? chip("warn", "Awaiting agent") : "") +
+          (t.unreadCount ? chip("info", t.unreadCount + " unread") : "");
+
+        el.innerHTML = `
+          <div class="line"><span class="ref">#${esc(t.reference)}</span>${statusChip(t.status)}${priorityChip(t.priority)}${flags}</div>
+          <div class="subject">${esc(t.subject)}</div>
+          <div class="muted">${who}</div>
+          ${ride}${perms}`;
+      }
+
+      function attachmentHtml(a, type) {
+        if (!a) return "";
+        const url = safeUrl(a.url);
+        if (!url) return "";
+        if (type === "image") {
+          const thumb = safeUrl(a.thumbnailUrl) || url;
+          return `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(thumb)}" alt="${esc(a.originalName)}" /></a>`;
+        }
+        if (type === "audio") return `<audio controls src="${esc(url)}"></audio>`;
+        return `<a class="file" href="${esc(url)}" target="_blank" rel="noopener">📎 ${esc(a.originalName)} (${fmtBytes(a.size)})</a>`;
+      }
+
+      function bubbleHtml(m, side) {
+        if (m.type === "system") {
+          return `<div class="sys">${esc(m.content)}<time>${fmtTime(m.createdAt)}</time></div>`;
+        }
+        const kind = m.senderType === "system" ? "bot" : m.senderType === MINE[side] ? "mine" : "theirs";
+        const label = kind === "bot" ? "Support bot" : m.senderType === "agent" ? "Agent" : "Rider";
+        const text = m.content ? esc(m.content) : "";
+        return `<div class="bubble ${kind}">${attachmentHtml(m.attachment, m.type)}${text}<span class="meta">${label} · ${fmtTime(m.createdAt)}</span></div>`;
+      }
+
+      function renderThread(side) {
+        const s = state[side];
+        const list = [...s.messages.values()].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); // stable
+        const box = $("thread" + side);
+        const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+
+        let lastMine = null;
+        for (const m of list) if (m.senderType === MINE[side]) lastMine = m;
+
+        box.innerHTML = list.length
+          ? list
+              .map((m) => {
+                let html = bubbleHtml(m, side);
+                if (m === lastMine && s.otherReadAt && new Date(s.otherReadAt) >= new Date(m.createdAt)) {
+                  html += '<div class="seen">Seen</div>';
+                }
+                return html;
+              })
+              .join("")
+          : '<div class="empty-state">No messages loaded</div>';
+        if (nearBottom) box.scrollTop = box.scrollHeight;
+
+        // Resolved banner
+        const t = s.ticket;
+        const banner = $("banner" + side);
+        if (t && t.status === "resolved") {
+          const canReopen = t.permissions?.canReopen;
+          banner.classList.remove("hidden");
+          banner.innerHTML = `<span>This ticket has been resolved.${canReopen ? "" : " No further actions can be taken."}</span>${
+            canReopen ? `<button class="btn-secondary" data-act="reopen" data-side="${side}">Reopen</button>` : ""
+          }`;
+        } else {
+          banner.classList.add("hidden");
+        }
+      }
+
+      function renderTyping(side) {
+        $("typing" + side).textContent = state[side].typing ? `${WHO[other(side)]} is typing…` : "";
+      }
+
+      function renderAll(side) {
+        renderHead(side);
+        renderThread(side);
+        renderTyping(side);
+      }
+
+      function addMessage(side, m) {
+        const s = state[side];
+        if (!m || m.ticketId !== s.ticketId) return;
+        s.messages.set(m.id, m);
+        if (m.senderType !== MINE[side]) {
+          s.typing = false;
+          clearTimeout(s.typingTimer);
+          renderTyping(side);
+        }
+        renderThread(side);
+      }
+
+      function ticketRowA(t) {
+        return `<div class="row ${t.id === state.A.ticketId ? "active" : ""}" data-id="${esc(t.id)}">
+          <div class="row-top"><b>${esc(t.reference)}</b>${statusChip(t.status)}${priorityChip(t.priority)}${
+            t.needsYourReply ? chip("warn", "Need your reply") : ""
+          }${t.unreadCount ? chip("info", t.unreadCount + " unread") : ""}</div>
+          <div class="row-title">${esc(t.subject)}</div>
+          <div class="row-sub">${esc(t.agent ? t.agent.name : "Waiting for agent")} · ${ago(t.lastMessageAt || t.createdAt)}${
+            t.status === "resolved" ? " · resolved " + ago(t.resolvedAt) : ""
+          }</div></div>`;
+      }
+
+      function ticketRowB(t) {
+        return `<div class="row ${t.id === state.B.ticketId ? "active" : ""}" data-id="${esc(t.id)}">
+          <div class="row-top"><b>${esc(t.reference)}</b>${statusChip(t.status)}${priorityChip(t.priority)}${
+            t.awaitingAgent ? chip("warn", "Awaiting agent") : ""
+          }${t.unreadCount ? chip("info", t.unreadCount + " unread") : ""}</div>
+          <div class="row-title">${esc(t.subject)}</div>
+          <div class="row-sub">${esc(t.requester.name)} (${esc(t.requester.role)}) · ${esc(
+            t.assignee ? t.assignee.name : "unassigned"
+          )} · ${ago(t.lastMessageAt || t.createdAt)}</div></div>`;
+      }
+
+      function renderInbox(side, items) {
+        const el = $("inbox" + side);
+        el.innerHTML = items.length
+          ? items.map(side === "A" ? ticketRowA : ticketRowB).join("")
+          : '<div class="empty-state">No tickets match this filter</div>';
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Ticket selection + loading
+         ══════════════════════════════════════════════════════════ */
+      function currentTicketId(side) {
+        const id = $("ticketId" + side).value.trim();
+        state[side].ticketId = id;
+        return id;
+      }
+      function needTicket(side) {
+        const id = currentTicketId(side);
+        if (!id) alert("Enter or pick a ticket first");
+        return id;
+      }
+
+      async function refreshTicket(side, { quiet = false } = {}) {
+        const id = state[side].ticketId;
+        if (!id) return null;
+        const t = await api(side, "GET", `${base(side)}/tickets/${id}`, undefined, { quiet });
+        if (t && id === state[side].ticketId) {
+          state[side].ticket = t;
+          renderHead(side);
+          renderThread(side);
+        }
+        return t;
+      }
+
+      async function loadMessages(side, { quiet = false } = {}) {
+        const id = state[side].ticketId;
+        if (!id) return null;
+        const page = await api(side, "GET", `${base(side)}/tickets/${id}/messages?page=1&limit=100`, undefined, { quiet });
+        if (!page || id !== state[side].ticketId) return null;
+        state[side].messages = new Map([...page.items].reverse().map((m) => [m.id, m])); // API is newest-first
+        if (page.meta?.hasNextPage) addLog(side, "system", "Older messages not shown", { total: page.meta.total, shown: page.items.length });
+        renderThread(side);
+        return page;
+      }
+
+      /** Agents only receive a thread's live messages after joining its room. */
+      async function joinRoom(side, id) {
+        if (side !== "B") return;
+        const s = state.B;
+        if (!s.socket?.connected) return;
+        if (s.joined && s.joined !== id) await emitAck("B", "leave_ticket", { ticketId: s.joined }, { quiet: true });
+        const ack = await emitAck("B", "join_ticket", { ticketId: id });
+        if (ack?.success) s.joined = id;
+      }
+
+      async function selectTicket(side, id, { load = true } = {}) {
+        const s = state[side];
+        id = (id || "").trim();
+        $("ticketId" + side).value = id;
+        if (s.ticketId !== id) {
+          s.messages = new Map();
+          s.ticket = null;
+          s.otherReadAt = null;
+          s.typing = false;
+        }
+        s.ticketId = id;
+        renderAll(side);
+        document.querySelectorAll(`#inbox${side} .row`).forEach((r) => r.classList.toggle("active", r.dataset.id === id));
+        if (!id || !token(side)) return;
+        await joinRoom(side, id);
+        if (load) {
+          await refreshTicket(side);
+          await loadMessages(side);
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Socket
+         ══════════════════════════════════════════════════════════ */
+      function emitAck(side, event, payload, { quiet = false } = {}) {
+        return new Promise((resolve) => {
+          const sock = state[side].socket;
+          if (!sock?.connected) {
+            addLog(side, "error", `Cannot emit ${event}`, { message: "Socket not connected" });
+            return resolve(null);
+          }
+          if (!quiet) addLog(side, "sent", event, payload);
+          sock.timeout(5000).emit(event, payload, (err, ack) => {
+            if (err) {
+              addLog(side, "error", `No ack for ${event}`, { message: "timed out after 5s" });
+              return resolve(null);
+            }
+            if (!quiet || !ack?.success) addLog(side, ack?.success ? "received" : "error", `ack: ${event}`, ack);
+            resolve(ack);
+          });
+        });
+      }
+
+      function connect(side) {
+        const t = token(side);
+        if (!t) return alert("Paste a JWT token for the " + WHO[side].toLowerCase() + " first");
+        state[side].socket?.disconnect();
+
+        const url = apiBase() + "/support";
+        setStatus(side, "connecting");
+        addLog(side, "system", "Connecting…", { url });
+
+        const socket = io(url, { auth: { token: t }, transports: ["websocket", "polling"], reconnection: false });
+        state[side].socket = socket;
+        bindSocket(side, socket);
+      }
+
+      function disconnect(side) {
+        state[side].socket?.disconnect();
+      }
+
+      function scheduleInboxRefresh() {
+        const s = state.B;
+        if (!s.inboxLoaded) return;
+        clearTimeout(s.inboxTimer);
+        s.inboxTimer = setTimeout(() => listInbox({ quiet: true }), 600);
+      }
+
+      function bindSocket(side, socket) {
+        const s = state[side];
+
+        socket.on("connect", async () => {
+          setStatus(side, "connected");
+          addLog(side, "system", "Connected", { socketId: socket.id });
+          if (side === "B" && s.ticketId) await joinRoom("B", s.ticketId);
+        });
+
+        socket.on("disconnect", (reason) => {
+          setStatus(side, "disconnected");
+          addLog(side, "system", "Disconnected", { reason });
+          s.joined = null;
+          s.socket = null;
+        });
+
+        socket.on("connect_error", (err) => {
+          setStatus(side, "disconnected");
+          addLog(side, "error", "Connection error", {
+            message: err.message,
+            hint: "Unauthorized = bad/expired token, or a role that cannot use support (only rider, ride_driver, admin, super_admin)",
+          });
+          s.socket = null;
+        });
+
+        socket.on("support_ready", (d) => {
+          $("who" + side).textContent = `${d.role} · ${String(d.userId).slice(0, 8)}…`;
+          addLog(side, "received", "support_ready", d);
+          const isAgent = d.role === "admin" || d.role === "super_admin";
+          if (side === "A" && isAgent) addLog(side, "error", "Wrong token for this panel", { message: "This is an admin token. Use a rider or ride-driver token here." });
+          if (side === "B" && !isAgent) addLog(side, "error", "Wrong token for this panel", { message: "This is not an admin token. Admin actions will return 403." });
+        });
+
+        socket.on("new_message", (m) => {
+          addLog(side, "received", "new_message", m);
+          if (m.ticketId !== s.ticketId) return;
+          addMessage(side, m);
+          const fromOther = m.senderType !== "system" && m.senderType !== MINE[side];
+          if (fromOther && $("autoRead" + side).checked) markRead(side, { quiet: true });
+        });
+
+        socket.on("ticket_created", (d) => {
+          addLog(side, "received", "ticket_created", d);
+          scheduleInboxRefresh();
+        });
+
+        socket.on("ticket_updated", (d) => {
+          addLog(side, "received", "ticket_updated", d);
+          if (d.ticketId === s.ticketId) refreshTicket(side, { quiet: true });
+          if (side === "B") scheduleInboxRefresh();
+        });
+
+        socket.on("read_receipt", (d) => {
+          addLog(side, "received", "read_receipt", d);
+          if (d.ticketId === s.ticketId) {
+            s.otherReadAt = d.readAt;
+            renderThread(side);
+          }
+        });
+
+        socket.on("user_typing", (d) => {
+          if (d.ticketId !== s.ticketId) return;
+          s.typing = true;
+          renderTyping(side);
+          clearTimeout(s.typingTimer);
+          s.typingTimer = setTimeout(() => {
+            s.typing = false;
+            renderTyping(side);
+          }, 4000);
+        });
+
+        socket.on("user_stopped_typing", (d) => {
+          if (d.ticketId !== s.ticketId) return;
+          s.typing = false;
+          renderTyping(side);
+        });
+
+        socket.on("exception", (d) => addLog(side, "error", "Server exception", d));
+
+        const known = new Set(["connect", "disconnect", "connect_error", "support_ready", "new_message", "ticket_created", "ticket_updated", "read_receipt", "user_typing", "user_stopped_typing", "exception"]);
+        socket.onAny((event, ...args) => {
+          bus.push({ side, event, data: args[0], t: Date.now() });
+          if (bus.length > 500) bus.shift();
+          if (!known.has(event)) addLog(side, "received", event, args[0] ?? null);
+        });
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Messaging
+         ══════════════════════════════════════════════════════════ */
+      async function sendMessage(side) {
+        const id = needTicket(side);
+        if (!id) return;
+        const box = $("msg" + side);
+        const content = box.value.trim();
+        if (!content) return alert("Type a message first");
+
+        stopTyping(side);
+        const viaSocket = $("via" + side).value === "socket";
+        let message = null;
+
+        if (viaSocket) {
+          const ack = await emitAck(side, "send_message", { ticketId: id, content });
+          message = ack?.success ? ack.message : null;
+        } else {
+          message = await api(side, "POST", `${base(side)}/tickets/${id}/messages`, { content });
+        }
+        if (message) {
+          box.value = "";
+          addMessage(side, message); // de-duplicated against the new_message echo
+        }
+      }
+
+      async function sendAttachment(side) {
+        const id = needTicket(side);
+        if (!id) return;
+        const file = $("file" + side).files[0];
+        if (!file) return alert("Choose a file first");
+        const caption = $("caption" + side).value.trim();
+
+        const fd = new FormData();
+        fd.append("file", file);
+        if (caption) fd.append("caption", caption);
+
+        const message = await api(side, "POST", `${base(side)}/tickets/${id}/attachments`, fd);
+        if (message) {
+          $("file" + side).value = "";
+          $("caption" + side).value = "";
+          addMessage(side, message);
+        }
+      }
+
+      async function markRead(side, { quiet = false } = {}) {
+        const id = quiet ? state[side].ticketId : needTicket(side);
+        if (!id) return;
+        if (state[side].socket?.connected) {
+          await emitAck(side, "message_read", { ticketId: id }, { quiet });
+        } else {
+          await api(side, "PATCH", `${base(side)}/tickets/${id}/read`, undefined, { quiet });
+        }
+        if (id === state[side].ticketId) refreshTicket(side, { quiet: true });
+      }
+
+      function onTyping(side) {
+        const s = state[side];
+        if (!s.socket?.connected || !s.ticketId) return;
+        const now = Date.now();
+        if (now - s.lastTypingSent > 2500) {
+          s.lastTypingSent = now;
+          s.socket.emit("typing_start", { ticketId: s.ticketId });
+        }
+        clearTimeout(s.stopTimer);
+        s.stopTimer = setTimeout(() => stopTyping(side), 2000);
+      }
+      function stopTyping(side) {
+        const s = state[side];
+        clearTimeout(s.stopTimer);
+        if (s.lastTypingSent && s.socket?.connected && s.ticketId) {
+          s.socket.emit("typing_stop", { ticketId: s.ticketId });
+        }
+        s.lastTypingSent = 0;
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Rider / driver actions
+         ══════════════════════════════════════════════════════════ */
+      function fillSample() {
+        $("subjectA").value = "Missing fare refund after cancelled ride";
+        $("descriptionA").value = "Ride was cancelled by the driver, but the refund has not appeared in my wallet yet.";
+      }
+
+      async function loadRides() {
+        const rides = await api("A", "GET", "/support/rides");
+        if (!rides) return;
+        $("rideA").innerHTML =
+          '<option value="">(no ride)</option>' +
+          rides.map((r) => `<option value="${esc(r.id)}">${esc(r.status)} · ${esc(r.pickupAddress)} → ${esc(r.dropoffAddress)}</option>`).join("");
+        if (!rides.length) addLog("A", "system", "No rides on this account", { hint: "Tickets can still be raised without a ride" });
+      }
+
+      async function createTicket() {
+        const subject = $("subjectA").value.trim();
+        const description = $("descriptionA").value.trim();
+        if (!subject || !description) return alert("Subject and description are required");
+
+        const body = { subject, description };
+        const priority = $("priorityA").value;
+        const rideId = $("rideA").value;
+        if (priority) body.priority = priority;
+        if (rideId) body.rideId = rideId;
+
+        const ticket = await api("A", "POST", "/support/tickets", body);
+        if (!ticket?.id) return;
+        await selectTicket("A", ticket.id);
+        if ($("shareTicket").checked) await selectTicket("B", ticket.id);
+      }
+
+      function listMine() {
+        const q = qs({
+          status: $("fStatusA").value,
+          priority: $("fPriorityA").value,
+          startDate: $("fStartA").value,
+          endDate: $("fEndA").value,
+          page: 1,
+          limit: 30,
+        });
+        return api("A", "GET", `/support/tickets?${q}`).then((page) => {
+          if (page) renderInbox("A", page.items);
+        });
+      }
+      function resetMine() {
+        ["fStatusA", "fPriorityA", "fStartA", "fEndA"].forEach((id) => ($(id).value = ""));
+        listMine();
+      }
+      const unreadSummary = () => api("A", "GET", "/support/tickets/unread");
+
+      /* ══════════════════════════════════════════════════════════
+         Admin actions
+         ══════════════════════════════════════════════════════════ */
+      async function getStats() {
+        const s = await api("B", "GET", "/admin/support/tickets/stats");
+        if (!s) return;
+        const labels = [
+          ["total", "total"],
+          ["open", "open"],
+          ["inProgress", "in progress"],
+          ["resolved", "resolved"],
+          ["unassigned", "unassigned"],
+          ["mine", "mine"],
+          ["awaitingAgent", "awaiting agent"],
+          ["highPriority", "high priority"],
+        ];
+        $("statsB").innerHTML = labels.map(([k, l]) => `<div class="stat"><b>${s[k]}</b>${l}</div>`).join("");
+      }
+
+      async function listInbox({ quiet = false } = {}) {
+        const q = qs({
+          status: $("fStatusB").value,
+          priority: $("fPriorityB").value,
+          assignee: $("fAssigneeB").value,
+          requesterRole: $("fRoleB").value,
+          sort: $("fSortB").value,
+          search: $("fSearchB").value,
+          startDate: $("fStartB").value,
+          endDate: $("fEndB").value,
+          page: 1,
+          limit: 30,
+        });
+        const page = await api("B", "GET", `/admin/support/tickets?${q}`, undefined, { quiet });
+        if (page) {
+          state.B.inboxLoaded = true;
+          renderInbox("B", page.items);
+        }
+      }
+      function resetInbox() {
+        ["fStatusB", "fPriorityB", "fAssigneeB", "fRoleB", "fSearchB", "fStartB", "fEndB"].forEach((id) => ($(id).value = ""));
+        $("fSortB").value = "recent";
+        listInbox();
+      }
+
+      async function loadAgents() {
+        const agents = await api("B", "GET", "/admin/support/agents");
+        if (!agents) return;
+        $("agentSelect").innerHTML = agents.length
+          ? agents.map((a) => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.id.slice(0, 8))}…)</option>`).join("")
+          : '<option value="">(no active admins)</option>';
+      }
+
+      async function assign(body) {
+        const id = needTicket("B");
+        if (!id) return;
+        const res = await api("B", "POST", `/admin/support/tickets/${id}/assign`, body);
+        if (res) refreshTicket("B", { quiet: true });
+      }
+      const assignMe = () => assign({}); // omit assigneeId = me
+      function assignOther() {
+        const assigneeId = $("agentSelect").value;
+        if (!assigneeId) return alert("Load agents and pick one first");
+        return assign({ assigneeId });
+      }
+
+      async function updatePriority() {
+        const id = needTicket("B");
+        if (!id) return;
+        const res = await api("B", "PATCH", `/admin/support/tickets/${id}/priority`, { priority: $("prioritySelect").value });
+        if (res) refreshTicket("B", { quiet: true });
+      }
+
+      async function resolve(side) {
+        const id = needTicket(side);
+        if (!id) return;
+        const note = side === "B" ? $("resolutionNote").value.trim() : "";
+        const body = side === "B" ? (note ? { note } : {}) : undefined;
+        const res = await api(side, "POST", `${base(side)}/tickets/${id}/resolve`, body);
+        if (res) refreshTicket(side, { quiet: true });
+      }
+
+      async function reopen(side) {
+        const id = needTicket(side);
+        if (!id) return;
+        const res = await api(side, "POST", `${base(side)}/tickets/${id}/reopen`);
+        if (res) refreshTicket(side, { quiet: true });
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Viewer markup (shared by both panels)
+         ══════════════════════════════════════════════════════════ */
+      function viewerHtml(side) {
+        return `
+          <div class="viewer">
+            <div class="tabs" role="tablist">
+              <button class="tab active" role="tab" data-tab="chat" data-side="${side}">Chat</button>
+              <button class="tab" role="tab" data-tab="log" data-side="${side}">Events</button>
+            </div>
+            <div class="tab-body" id="tabChat${side}">
+              <div class="ticket-head" id="head${side}"></div>
+              <div class="thread" id="thread${side}"></div>
+              <div class="typing" id="typing${side}" aria-live="polite"></div>
+              <div class="banner hidden" id="banner${side}"></div>
+            </div>
+            <div class="tab-body hidden events-log" id="log${side}">
+              <div class="empty-state">Connect and act to see events here</div>
+            </div>
+          </div>
+          <div class="send-area">
+            <textarea id="msg${side}" placeholder="Message on the current ticket… (Enter to send, Shift+Enter for a new line)"></textarea>
+            <div class="actions-row">
+              <button class="btn-primary-${side.toLowerCase()}" data-act="sendMessage" data-side="${side}">Send message</button>
+              <select id="via${side}" aria-label="Send via">
+                <option value="socket">via socket</option>
+                <option value="rest">via REST</option>
+              </select>
+              <label class="check"><input type="checkbox" id="autoRead${side}" checked /> Auto-mark incoming as read</label>
+            </div>
+            <div class="note">Sending is never blocked here, so you can confirm the server rejects replies on resolved tickets.</div>
+          </div>`;
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Automated flow
+         ══════════════════════════════════════════════════════════ */
+      class FlowFail extends Error {
+        constructor(msg, res) {
+          super(msg);
+          this.res = res;
+        }
+      }
+      const must = (cond, msg, res) => {
+        if (!cond) throw new FlowFail(msg, res);
+      };
+      const codeOf = (r) => r?.data?.code;
+      const sameStatus = (r, s, label) => must(r.status === s, `${label}: expected ${s}, got ${r.status}${codeOf(r) ? " (" + codeOf(r) + ")" : ""}`, r);
+
+      function waitForEvent(side, name, pred, since, timeout = 3000) {
+        return new Promise((resolve) => {
+          const t0 = Date.now();
+          const tick = () => {
+            const hit = bus.find((e) => e.side === side && e.event === name && e.t >= since && (!pred || pred(e.data)));
+            if (hit) return resolve(hit);
+            if (Date.now() - t0 >= timeout) return resolve(null);
+            setTimeout(tick, 100);
+          };
+          tick();
+        });
+      }
+
+      function makeContext() {
+        const c = {
+          tokens: { A: token("A"), B: token("B") },
+          bId: jwtSub($("tokenB").value),
+          req: (side, method, path, body) => request(c.tokens[side], method, path, body),
+          /** Asserts a realtime event arrived, when that side's socket is connected. */
+          async realtime(side, event, pred, since) {
+            if (!state[side].socket?.connected) return ` · realtime skipped (${side === "A" ? "rider" : "admin"} socket not connected)`;
+            const hit = await waitForEvent(side, event, pred, since);
+            must(hit, `Expected realtime "${event}" on the ${side === "A" ? "rider" : "admin"} socket within 3s`);
+            return ` · realtime ${event} ✓`;
+          },
+        };
+        return c;
+      }
+
+      const FLOW = [
+        {
+          title: "Rider token works on the app API",
+          async run(c) {
+            const r = await c.req("A", "GET", "/support/tickets?limit=1");
+            sameStatus(r, 200, "GET /support/tickets");
+            return "GET /support/tickets → 200";
+          },
+        },
+        {
+          title: "Admin token works on the admin API",
+          async run(c) {
+            const r = await c.req("B", "GET", "/admin/support/tickets/stats");
+            sameStatus(r, 200, "GET /admin/support/tickets/stats");
+            return `inbox has ${r.data.total} ticket(s), ${r.data.unassigned} unassigned`;
+          },
+        },
+        {
+          title: "Roles are kept apart",
+          async run(c) {
+            const a = await c.req("A", "GET", "/admin/support/tickets?limit=1");
+            must(a.status === 403, `Rider reached an admin endpoint (got ${a.status})`, a);
+            const b = await c.req("B", "GET", "/support/tickets?limit=1");
+            must(b.status === 403, `Admin reached a rider endpoint (got ${b.status})`, b);
+            return "rider → /admin/support = 403, admin → /support = 403";
+          },
+        },
+        {
+          title: "Rider raises a ticket",
+          async run(c) {
+            c.subject = `[flow test] Missing fare refund ${new Date().toISOString().slice(11, 19)}`;
+            c.description = "Ride was cancelled by the driver, but the refund has not appeared in my wallet yet.";
+            c.rideId = $("rideA").value || undefined;
+            const body = { subject: c.subject, description: c.description, priority: "medium" };
+            if (c.rideId) body.rideId = c.rideId;
+
+            const since = Date.now() - 50;
+            const r = await c.req("A", "POST", "/support/tickets", body);
+            sameStatus(r, 201, "POST /support/tickets");
+            const t = (c.ticket = r.data);
+            must(/^TR-\d+$/.test(t.reference), `reference should look like TR-2048, got ${t.reference}`, r);
+            must(t.status === "open", `status should be open, got ${t.status}`, r);
+            must(t.priority === "medium", `priority should be medium, got ${t.priority}`, r);
+            must(t.agent === null, "no agent should be assigned yet", r);
+            must(t.needsYourReply === false, "needsYourReply should be false on a new ticket", r);
+            must(t.permissions?.canReply && t.permissions?.canResolve, "requester should be able to reply and resolve", r);
+
+            await joinRoom("B", t.id); // so the admin socket receives this thread's messages
+            const rt = await c.realtime("B", "ticket_created", (e) => e.ticketId === t.id, since);
+            return `${t.reference} created (open, medium${c.rideId ? ", linked to a ride" : ""})${rt}`;
+          },
+        },
+        {
+          title: "Thread starts with the rider's text, then the bot greeting",
+          async run(c) {
+            const r = await c.req("A", "GET", `/support/tickets/${c.ticket.id}/messages?limit=10`);
+            sameStatus(r, 200, "GET messages");
+            const items = r.data.items;
+            must(items.length === 2, `expected 2 messages, got ${items.length}`, r);
+            const [greeting, opening] = items; // newest first
+            must(
+              opening.senderType === "requester" && opening.content === `${c.subject}\n\n${c.description}`,
+              "oldest message should be the rider's subject + description",
+              r
+            );
+            must(greeting.senderType === "system" && greeting.type === "text" && /support chat/i.test(greeting.content), "newest message should be the bot greeting", r);
+            return "newest-first order OK; greeting follows the opening message";
+          },
+        },
+        {
+          title: "Admin inbox lists it as unassigned, awaiting a reply",
+          async run(c) {
+            const q = qs({ assignee: "unassigned", search: c.ticket.reference, limit: 20 });
+            const r = await c.req("B", "GET", `/admin/support/tickets?${q}`);
+            sameStatus(r, 200, "GET inbox");
+            const row = r.data.items.find((i) => i.id === c.ticket.id);
+            must(row, `${c.ticket.reference} not found in the unassigned inbox (search by reference)`, r);
+            must(row.assignee === null, "assignee should be null", r);
+            must(row.awaitingAgent === true, "awaitingAgent should be true (the rider spoke last)", r);
+            must(["rider", "ride_driver"].includes(row.requester.role), `unexpected requester role ${row.requester.role}`, r);
+            return `found via search "${c.ticket.reference}"; requester is ${row.requester.name} (${row.requester.role})`;
+          },
+        },
+        {
+          title: "Admin detail shows assign and resolve rights",
+          async run(c) {
+            const r = await c.req("B", "GET", `/admin/support/tickets/${c.ticket.id}`);
+            sameStatus(r, 200, "GET admin detail");
+            const p = r.data.permissions;
+            must(p.canAssign && p.canResolve && p.canReply && p.canChangePriority, "admin should be able to assign, reply, resolve and change priority", r);
+            if (c.rideId) must(r.data.ride?.id === c.rideId, "admin detail should include the linked ride", r);
+            return c.rideId ? "permissions OK; ride summary included" : "permissions OK";
+          },
+        },
+        {
+          title: "Admin claims the ticket",
+          async run(c) {
+            const since = Date.now() - 50;
+            const r = await c.req("B", "POST", `/admin/support/tickets/${c.ticket.id}/assign`, {});
+            sameStatus(r, 200, "POST assign");
+            must(r.data.status === "in_progress", `status should be in_progress, got ${r.data.status}`, r);
+            must(r.data.assigneeId, "assigneeId should be set", r);
+            if (c.bId) must(r.data.assigneeId === c.bId, "assignee should be the admin who claimed it", r);
+
+            const m = await c.req("B", "GET", `/admin/support/tickets/${c.ticket.id}/messages?limit=20`);
+            must(m.data.items.some((x) => x.type === "system" && /assigned/i.test(x.content)), 'thread should contain the "assigned" notice', m);
+            const t = await c.req("A", "GET", `/support/tickets/${c.ticket.id}`);
+            must(t.data.agent?.name && t.data.status === "in_progress", "rider should now see the agent and in_progress", t);
+
+            const rt = await c.realtime("A", "ticket_updated", (e) => e.ticketId === c.ticket.id && e.change === "assigned", since);
+            return `claimed; rider sees agent "${t.data.agent.name}"${rt}`;
+          },
+        },
+        {
+          title: "Admin replies and the rider gets it live",
+          async run(c) {
+            const since = Date.now() - 50;
+            const r = await c.req("B", "POST", `/admin/support/tickets/${c.ticket.id}/messages`, { content: "Hi, we are looking into this refund now." });
+            sameStatus(r, 201, "POST admin message");
+            must(r.data.senderType === "agent", `senderType should be agent, got ${r.data.senderType}`, r);
+            const id = r.data.id;
+            const rt = await c.realtime("A", "new_message", (m) => m.id === id, since);
+            return "agent message stored" + rt;
+          },
+        },
+        {
+          title: 'Rider sees "Need your reply" and an unread message',
+          async run(c) {
+            const t = await c.req("A", "GET", `/support/tickets/${c.ticket.id}`);
+            sameStatus(t, 200, "GET ticket");
+            must(t.data.needsYourReply === true, "needsYourReply should be true after an agent reply", t);
+            must(t.data.unreadCount >= 1, `unreadCount should be >= 1, got ${t.data.unreadCount}`, t);
+            const u = await c.req("A", "GET", "/support/tickets/unread");
+            sameStatus(u, 200, "GET unread");
+            must(u.data.total >= 1 && u.data.tickets.some((x) => x.ticketId === c.ticket.id), "unread summary should include this ticket", u);
+            return `unreadCount=${t.data.unreadCount}; unread summary total=${u.data.total}`;
+          },
+        },
+        {
+          title: "Rider marks read; unread clears and the admin gets a receipt",
+          async run(c) {
+            const since = Date.now() - 50;
+            const r = await c.req("A", "PATCH", `/support/tickets/${c.ticket.id}/read`);
+            sameStatus(r, 200, "PATCH read");
+            const t = await c.req("A", "GET", `/support/tickets/${c.ticket.id}`);
+            must(t.data.unreadCount === 0, `unreadCount should be 0, got ${t.data.unreadCount}`, t);
+            const rt = await c.realtime("B", "read_receipt", (e) => e.ticketId === c.ticket.id, since);
+            return "unreadCount → 0" + rt;
+          },
+        },
+        {
+          title: "Rider replies; admin sees it live and the ticket awaits an agent",
+          async run(c) {
+            const since = Date.now() - 50;
+            const r = await c.req("A", "POST", `/support/tickets/${c.ticket.id}/messages`, { content: "Thanks. The ride ID is on my receipt." });
+            sameStatus(r, 201, "POST rider message");
+            must(r.data.senderType === "requester", `senderType should be requester, got ${r.data.senderType}`, r);
+            const d = await c.req("B", "GET", `/admin/support/tickets/${c.ticket.id}`);
+            must(d.data.awaitingAgent === true, "awaitingAgent should be true after a rider reply", d);
+            const id = r.data.id;
+            const rt = await c.realtime("B", "new_message", (m) => m.id === id, since);
+            return "requester message stored; awaitingAgent=true" + rt;
+          },
+        },
+        {
+          title: "Admin raises priority to high; escalated notice appears",
+          async run(c) {
+            const since = Date.now() - 50;
+            const r = await c.req("B", "PATCH", `/admin/support/tickets/${c.ticket.id}/priority`, { priority: "high" });
+            sameStatus(r, 200, "PATCH priority");
+            must(r.data.priority === "high", `priority should be high, got ${r.data.priority}`, r);
+            const m = await c.req("B", "GET", `/admin/support/tickets/${c.ticket.id}/messages?limit=20`);
+            must(m.data.items.some((x) => x.type === "system" && /escalated/i.test(x.content)), 'thread should contain the "escalated" notice', m);
+            const rt = await c.realtime("A", "ticket_updated", (e) => e.ticketId === c.ticket.id && e.change === "priority_changed", since);
+            return "high + escalated notice" + rt;
+          },
+        },
+        {
+          title: "Rider cannot change priority",
+          async run(c) {
+            const r = await c.req("A", "PATCH", `/admin/support/tickets/${c.ticket.id}/priority`, { priority: "low" });
+            must(r.status === 403, `expected 403, got ${r.status}`, r);
+            return "403 from the role guard";
+          },
+        },
+        {
+          title: "Admin resolves with an internal note",
+          async run(c) {
+            const note = "Refund issued to wallet";
+            const r = await c.req("B", "POST", `/admin/support/tickets/${c.ticket.id}/resolve`, { note });
+            sameStatus(r, 200, "POST resolve");
+            must(r.data.status === "resolved" && r.data.resolvedAt, "status should be resolved with resolvedAt set", r);
+
+            const d = await c.req("B", "GET", `/admin/support/tickets/${c.ticket.id}`);
+            must(d.data.resolutionNote === note, "admin detail should show the resolution note", d);
+            must(d.data.resolvedBy?.id, "admin detail should show who resolved it", d);
+
+            const t = await c.req("A", "GET", `/support/tickets/${c.ticket.id}`);
+            must(!("resolutionNote" in t.data), "rider must not see the internal resolution note", t);
+            must(t.data.permissions.canReply === false && t.data.permissions.canResolve === false, "rider should no longer be able to reply or resolve", t);
+
+            const m = await c.req("A", "GET", `/support/tickets/${c.ticket.id}/messages?limit=20`);
+            must(m.data.items.some((x) => x.type === "system" && /has been resolved/i.test(x.content)), 'thread should contain the "resolved" notice', m);
+            return "resolved; note hidden from the rider";
+          },
+        },
+        {
+          title: "Resolved ticket is read-only for everyone",
+          async run(c) {
+            const a = await c.req("A", "POST", `/support/tickets/${c.ticket.id}/messages`, { content: "Hello?" });
+            must(a.status === 409 && codeOf(a) === "SUPPORT_TICKET_RESOLVED", `rider reply: expected 409 SUPPORT_TICKET_RESOLVED, got ${a.status} ${codeOf(a) || ""}`, a);
+            const b = await c.req("B", "POST", `/admin/support/tickets/${c.ticket.id}/messages`, { content: "Hello?" });
+            must(b.status === 409 && codeOf(b) === "SUPPORT_TICKET_RESOLVED", `admin reply: expected 409 SUPPORT_TICKET_RESOLVED, got ${b.status} ${codeOf(b) || ""}`, b);
+            return "both replies rejected with 409 SUPPORT_TICKET_RESOLVED";
+          },
+        },
+        {
+          title: "Resolving twice is rejected",
+          async run(c) {
+            const r = await c.req("B", "POST", `/admin/support/tickets/${c.ticket.id}/resolve`, {});
+            must(r.status === 409 && codeOf(r) === "SUPPORT_ALREADY_RESOLVED", `expected 409 SUPPORT_ALREADY_RESOLVED, got ${r.status} ${codeOf(r) || ""}`, r);
+            return "409 SUPPORT_ALREADY_RESOLVED";
+          },
+        },
+        {
+          title: "Rider reopen follows the configured window",
+          async run(c) {
+            const r = await c.req("A", "POST", `/support/tickets/${c.ticket.id}/reopen`);
+            if (r.status === 200) {
+              must(["open", "in_progress"].includes(r.data.status), `reopened status should be open or in_progress, got ${r.data.status}`, r);
+              return `rider reopened it (window enabled) → ${r.data.status}`;
+            }
+            must(r.status === 403 && codeOf(r) === "SUPPORT_REOPEN_WINDOW_EXPIRED", `expected 200 or 403 SUPPORT_REOPEN_WINDOW_EXPIRED, got ${r.status} ${codeOf(r) || ""}`, r);
+            return "rider cannot reopen (SUPPORT_REOPEN_WINDOW_HOURS=0 or expired), matching the design's 'no further actions'";
+          },
+        },
+        {
+          title: "Admin can always reopen, then re-resolve (cleanup)",
+          async run(c) {
+            const id = c.ticket.id;
+            let d = await c.req("B", "GET", `/admin/support/tickets/${id}`);
+            if (d.data.status !== "resolved") {
+              const fix = await c.req("B", "POST", `/admin/support/tickets/${id}/resolve`, {});
+              sameStatus(fix, 200, "re-resolve after rider reopen");
+            }
+            const reopened = await c.req("B", "POST", `/admin/support/tickets/${id}/reopen`);
+            sameStatus(reopened, 200, "admin reopen");
+            must(reopened.data.status === "in_progress", `reopened ticket keeps its assignee, so status should be in_progress, got ${reopened.data.status}`, reopened);
+            const done = await c.req("B", "POST", `/admin/support/tickets/${id}/resolve`, { note: "Flow test cleanup" });
+            sameStatus(done, 200, "final resolve");
+            return "reopened → in_progress, resolved again; ticket left resolved";
+          },
+        },
+      ];
+
+      let flowReport = "";
+      let flowRunning = false;
+
+      function renderStep(i, status, detail, res) {
+        const el = $("step" + i);
+        el.className = "step " + status;
+        el.querySelector(".icon").textContent = { run: "◔", pass: "✓", fail: "✗", wait: "○" }[status];
+        el.querySelector(".d").textContent = detail || "";
+        el.querySelector("pre")?.remove();
+        if (res) {
+          const pre = document.createElement("pre");
+          const body = typeof res.data === "object" ? JSON.stringify(res.data, null, 2) : String(res.data ?? "");
+          pre.textContent = `HTTP ${res.status}\n${body.slice(0, 2000)}`;
+          el.lastElementChild.appendChild(pre);
+        }
+      }
+
+      async function runFlow() {
+        if (flowRunning) return;
+        if (!token("A") || !token("B")) return alert("Paste both tokens first: a rider/driver token in the left panel and an admin token in the right.");
+
+        flowRunning = true;
+        $("runFlow").disabled = true;
+        $("copyReport").disabled = true;
+        $("flowSummary").innerHTML = "";
+        $("flowSteps").innerHTML = FLOW.map(
+          (s, i) => `<div class="step wait" id="step${i}"><span class="icon">○</span><div><div class="t">${i + 1}. ${esc(s.title)}</div><div class="d"></div></div></div>`
+        ).join("");
+
+        const c = makeContext();
+        const lines = [`Support flow test · ${apiBase()} · ${new Date().toISOString()}`];
+        let passed = 0;
+        let failed = 0;
+        const stop = $("stopOnFail").checked;
+
+        for (let i = 0; i < FLOW.length; i++) {
+          renderStep(i, "run", "running…");
+          try {
+            const detail = await FLOW[i].run(c);
+            renderStep(i, "pass", detail);
+            lines.push(`PASS  ${i + 1}. ${FLOW[i].title} — ${detail}`);
+            passed++;
+          } catch (err) {
+            const msg = err instanceof FlowFail ? err.message : `Unexpected error: ${err.message} (is the server reachable?)`;
+            renderStep(i, "fail", msg, err.res);
+            lines.push(`FAIL  ${i + 1}. ${FLOW[i].title} — ${msg}${err.res ? "\n      HTTP " + err.res.status + " " + JSON.stringify(err.res.data) : ""}`);
+            failed++;
+            if (stop) break;
+          }
+        }
+
+        const skipped = FLOW.length - passed - failed;
+        lines.push(`\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} not run` : ""}`);
+        flowReport = lines.join("\n");
+        $("flowSummary").innerHTML = `<div class="summary ${failed ? "bad" : "ok"}">${
+          failed ? `${failed} failed` : "All checks passed"
+        } · ${passed}/${FLOW.length} passed${skipped ? ` · ${skipped} not run` : ""}</div>`;
+
+        if (c.ticket?.id) {
+          await selectTicket("A", c.ticket.id);
+          await selectTicket("B", c.ticket.id);
+          if (state.B.inboxLoaded) listInbox({ quiet: true });
+        }
+        flowRunning = false;
+        $("runFlow").disabled = false;
+        $("copyReport").disabled = false;
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Wiring
+         ══════════════════════════════════════════════════════════ */
+      const ACTIONS = {
+        connect: (d) => connect(d.side),
+        disconnect: (d) => disconnect(d.side),
+        clearLog: (d) => clearLog(d.side),
+        loadRides,
+        createTicket,
+        fillSample,
+        listMine,
+        resetMine,
+        unreadSummary,
+        openTicket: (d) => {
+          const id = needTicket(d.side);
+          if (id) selectTicket(d.side, id);
+        },
+        getTicket: (d) => needTicket(d.side) && refreshTicket(d.side),
+        getMessages: (d) => needTicket(d.side) && loadMessages(d.side),
+        markRead: (d) => markRead(d.side),
+        resolveA: () => resolve("A"),
+        resolveB: () => resolve("B"),
+        reopen: (d) => reopen(d.side),
+        sendAttachment: (d) => sendAttachment(d.side),
+        sendMessage: (d) => sendMessage(d.side),
+        getStats,
+        listInbox: () => listInbox(),
+        resetInbox,
+        loadAgents,
+        assignMe,
+        assignOther,
+        updatePriority,
+      };
+
+      document.addEventListener("click", (e) => {
+        const tab = e.target.closest(".tab");
+        if (tab) {
+          const side = tab.dataset.side;
+          document.querySelectorAll(`#viewer${side} .tab`).forEach((t) => t.classList.toggle("active", t === tab));
+          $("tabChat" + side).classList.toggle("hidden", tab.dataset.tab !== "chat");
+          $("log" + side).classList.toggle("hidden", tab.dataset.tab !== "log");
+          return;
+        }
+        const row = e.target.closest(".row");
+        if (row) {
+          const side = row.closest("#inboxA") ? "A" : "B";
+          selectTicket(side, row.dataset.id).then(() => {
+            if ($("shareTicket").checked) selectTicket(other(side), row.dataset.id);
+          });
+          return;
+        }
+        const btn = e.target.closest("[data-act]");
+        if (btn && ACTIONS[btn.dataset.act]) ACTIONS[btn.dataset.act](btn.dataset);
+      });
+
+      ["A", "B"].forEach((side) => {
+        $("viewer" + side).innerHTML = viewerHtml(side);
+        renderAll(side);
+        $("msg" + side).addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage(side);
+          }
+        });
+        $("msg" + side).addEventListener("input", () => onTyping(side));
+        $("ticketId" + side).addEventListener("change", () => currentTicketId(side));
+
+        // Remember the URL and tokens for this browser tab only.
+        const input = $("token" + side);
+        input.value = store.get("token" + side) || "";
+        input.addEventListener("input", () => store.set("token" + side, input.value));
+      });
+      $("serverUrl").value = store.get("serverUrl") || $("serverUrl").value;
+      $("serverUrl").addEventListener("input", () => store.set("serverUrl", $("serverUrl").value));
+
+      $("openFlow").addEventListener("click", () => $("flowDrawer").classList.add("open"));
+      $("closeFlow").addEventListener("click", () => $("flowDrawer").classList.remove("open"));
+      $("runFlow").addEventListener("click", runFlow);
+      $("copyReport").addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(flowReport);
+          $("copyReport").textContent = "Copied";
+        } catch {
+          prompt("Copy the report:", flowReport);
+        }
+        setTimeout(() => ($("copyReport").textContent = "Copy report"), 1500);
+      });
+    </script>
+  </body>
+</html>
